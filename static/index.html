@@ -324,19 +324,27 @@ function closeReader() {
 function loadPdfPages() {
     const pv = document.getElementById('pdfView');
     if (!currentDoc) return;
-    // Carregar páginas do chunk atual e adjacentes
-    const chunk = currentChunks[currentChunkIndex];
-    const currentPage = chunk ? chunk.page : 1;
-    // Mostrar 3 páginas centradas na atual
-    const startPage = Math.max(1, currentPage - 1);
-    const endPage = Math.min(currentDoc.total_pages, currentPage + 1);
 
+    // Carregar TODAS as páginas com lazy loading (browser gerencia)
     let html = '';
-    for (let p = startPage; p <= endPage; p++) {
-        html += `<div class="pdf-page"><img src="/api/documents/${currentDoc.id}/pages/${p}.png" alt="Página ${p}" loading="lazy"></div><div class="pdf-page-num">Página ${p}</div>`;
+    for (let p = 1; p <= currentDoc.total_pages; p++) {
+        html += `<div class="pdf-page" id="pdf-page-${p}"><img src="/api/documents/${currentDoc.id}/pages/${p}.png" alt="Página ${p}" loading="lazy"></div><div class="pdf-page-num">Página ${p} de ${currentDoc.total_pages}</div>`;
     }
     pv.innerHTML = html;
-    pv.scrollTop = 0;
+
+    // Scroll para a página do chunk atual
+    const chunk = currentChunks[currentChunkIndex];
+    if (chunk && chunk.page > 1) {
+        setTimeout(() => {
+            const el = document.getElementById(`pdf-page-${chunk.page}`);
+            if (el) el.scrollIntoView({ behavior: 'auto' });
+        }, 100);
+    }
+}
+
+function scrollPdfToPage(page) {
+    const el = document.getElementById(`pdf-page-${page}`);
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
 function setView(v) {
@@ -435,11 +443,9 @@ function updateHighlight() {
         if (wt<ts+60 || wt>ts+th-80) tv.scrollTo({top:wt-th/3,behavior:'smooth'});
     }
 
-    // Scroll PDF view to current page
+    // Scroll PDF view para a página do chunk atual
     if (currentView==='pdf' && currentChunks[currentChunkIndex]) {
-        const pg = currentChunks[currentChunkIndex].page;
-        const imgs = document.querySelectorAll('.pdf-page img');
-        // pages já estão carregadas — sem ação extra necessária
+        scrollPdfToPage(currentChunks[currentChunkIndex].page);
     }
 }
 
@@ -467,7 +473,7 @@ function seekToWord(wi) {
 }
 
 audio.addEventListener('timeupdate', () => {
-    if(audio.duration){
+    if(audio.duration && isFinite(audio.duration)){
         document.getElementById('pFill').style.width=(audio.currentTime/audio.duration*100)+'%';
         document.getElementById('curTime').textContent=fmt(audio.currentTime);
         document.getElementById('totTime').textContent=fmt(audio.duration);
@@ -489,7 +495,10 @@ async function goToChunk(i) { currentChunkIndex=i; updateUI(); await playCurrent
 function updateUI() {
     document.getElementById('chunkLabel').textContent=`${currentChunkIndex+1} / ${currentChunks.length}`;
     loadChunkText(currentChunkIndex);
-    loadPdfPages();
+    // Só scrollar para a página, não recarregar todas
+    if (currentChunks[currentChunkIndex]) {
+        scrollPdfToPage(currentChunks[currentChunkIndex].page);
+    }
 }
 
 function fmt(s){return `${Math.floor(s/60)}:${Math.floor(s%60).toString().padStart(2,'0')}`;}
