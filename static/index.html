@@ -110,8 +110,8 @@
         /* PDF view */
         .pdf-main { flex: 1; overflow-y: auto; display: flex; flex-direction: column; align-items: center; padding: 24px; gap: 8px; }
         .pdf-main.hidden { display: none; }
-        .pdf-page { max-width: 700px; width: 100%; border-radius: 4px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); background: white; position: relative; }
-        .pdf-page img { width: 100%; display: block; border-radius: 4px; }
+        .pdf-page { max-width: 700px; width: 100%; border-radius: 4px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); background: white; position: relative; cursor: pointer; }
+        .pdf-page img { width: 100%; display: block; border-radius: 4px; pointer-events: none; }
         .pdf-page-num { text-align: center; font-size: 11px; color: var(--mist); padding: 6px 0 16px; }
 
         /* Highlight overlay no PDF */
@@ -128,29 +128,30 @@
         .text-view .word.active { background: var(--highlight); padding: 1px 2px; }
         .text-view .word.spoken { color: var(--ink); }
 
-        /* === PLAYER BAR (bottom) === */
-        .player-bar { flex-shrink: 0; background: var(--white); border-top: 1px solid var(--border); padding: 12px 20px; }
-        .player-progress { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
-        .player-progress .ptime { font-size: 11px; font-family: var(--font-m); color: var(--mist); min-width: 40px; }
-        .player-progress .ptime.r { text-align: right; }
-        .pbar { flex: 1; height: 4px; background: var(--cloud); border-radius: 2px; cursor: pointer; }
-        .pbar:hover { height: 6px; }
-        .pfill { height: 100%; background: var(--ink); border-radius: 2px; transition: width 0.1s linear; }
-        .player-controls { display: flex; align-items: center; justify-content: space-between; }
-        .player-left { display: flex; align-items: center; gap: 6px; }
-        .player-center { display: flex; align-items: center; gap: 14px; }
-        .player-right { display: flex; align-items: center; gap: 4px; }
-        .chunk-label { font-size: 11px; color: var(--mist); }
+        /* === PLAYER BAR (bottom) — compact single row === */
+        .player-bar { flex-shrink: 0; background: var(--white); border-top: 1px solid var(--border); }
+        .player-bar-progress { height: 3px; background: var(--cloud); cursor: pointer; position: relative; }
+        .player-bar-progress:hover { height: 5px; }
+        .pfill { height: 100%; background: var(--ink); border-radius: 0 2px 2px 0; transition: width 0.1s linear; }
+        .player-bar-row { display: flex; align-items: center; gap: 12px; padding: 8px 16px; }
+        .player-left { display: flex; align-items: center; gap: 4px; }
+        .player-center { display: flex; align-items: center; gap: 10px; flex: 1; justify-content: center; }
+        .player-right { display: flex; align-items: center; gap: 6px; }
 
-        .play-btn { width: 44px; height: 44px; border-radius: 50%; background: var(--ink); border: none; color: white; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.15s; box-shadow: 0 2px 10px rgba(0,0,0,0.15); }
+        .play-btn { width: 36px; height: 36px; border-radius: 50%; background: var(--ink); border: none; color: white; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.12s; }
         .play-btn:hover { background: #000; transform: scale(1.05); }
-        .play-btn svg { width: 20px; height: 20px; }
-        .skip-b { width: 32px; height: 32px; border-radius: 50%; background: transparent; border: 1px solid var(--border); color: var(--slate); cursor: pointer; display: flex; align-items: center; justify-content: center; }
-        .skip-b:hover { background: var(--cloud); }
+        .play-btn svg { width: 16px; height: 16px; }
+        .skip-b { width: 28px; height: 28px; border-radius: 50%; background: transparent; border: none; color: var(--slate); cursor: pointer; display: flex; align-items: center; justify-content: center; }
+        .skip-b:hover { color: var(--ink); }
         .skip-b svg { width: 14px; height: 14px; }
 
-        .spd-btn { padding: 3px 8px; border-radius: 14px; font-size: 11px; font-weight: 500; border: 1px solid var(--border); background: transparent; color: var(--slate); cursor: pointer; font-family: var(--font-m); transition: all 0.15s; }
-        .spd-btn:hover, .spd-btn.active { background: var(--ink); color: white; border-color: var(--ink); }
+        .ptime { font-size: 10px; font-family: var(--font-m); color: var(--mist); min-width: 36px; }
+        .ptime.r { text-align: right; }
+        .chunk-label { font-size: 10px; color: var(--mist); white-space: nowrap; }
+
+        .spd-select { padding: 3px 6px; border-radius: 4px; font-size: 10px; font-weight: 500; border: 1px solid var(--border); background: var(--white); color: var(--slate); cursor: pointer; font-family: var(--font-m); appearance: none; -webkit-appearance: none; }
+
+        .voice-select { padding: 3px 8px; border-radius: 4px; font-size: 10px; border: 1px solid var(--border); background: var(--white); color: var(--slate); cursor: pointer; font-family: var(--font-b); max-width: 120px; appearance: none; -webkit-appearance: none; }
 
         .loading-spinner { width: 18px; height: 18px; border: 2px solid var(--border); border-top-color: var(--ink); border-radius: 50%; animation: spin 0.6s linear infinite; }
         @keyframes spin { to { transform: rotate(360deg); } }
@@ -240,28 +241,33 @@
     </div>
 
     <div class="player-bar">
-        <div class="player-progress">
-            <span class="ptime" id="curTime">0:00</span>
-            <div class="pbar" id="pBar" onclick="seekAudio(event)"><div class="pfill" id="pFill" style="width:0%"></div></div>
-            <span class="ptime r" id="totTime">0:00</span>
-        </div>
-        <div class="player-controls">
+        <div class="player-bar-progress" id="pBar" onclick="seekAudio(event)"><div class="pfill" id="pFill" style="width:0%"></div></div>
+        <div class="player-bar-row">
             <div class="player-left">
-                <span class="chunk-label" id="chunkLabel">1 / 1</span>
+                <span class="ptime" id="curTime">0:00</span>
+                <span style="color:var(--border);font-size:10px">/</span>
+                <span class="ptime r" id="totTime">0:00</span>
             </div>
             <div class="player-center">
                 <button class="skip-b" onclick="prevChunk()"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg></button>
                 <button class="play-btn" id="playBtn" onclick="togglePlay()">
-                    <svg id="playIcon" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                    <svg id="playIcon" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 18 12 6 20 6 4"/></svg>
                     <svg id="pauseIcon" viewBox="0 0 24 24" fill="currentColor" style="display:none"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
                 </button>
                 <button class="skip-b" onclick="nextChunk()"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 6h2v12h-2zm-10 0l8.5 6L6 18z"/></svg></button>
             </div>
             <div class="player-right">
-                <button class="spd-btn" onclick="setSpeed(0.75)">0.75</button>
-                <button class="spd-btn active" onclick="setSpeed(1)">1x</button>
-                <button class="spd-btn" onclick="setSpeed(1.5)">1.5</button>
-                <button class="spd-btn" onclick="setSpeed(2)">2x</button>
+                <span class="chunk-label" id="chunkLabel">1/1</span>
+                <select class="spd-select" onchange="setSpeed(parseFloat(this.value))" title="Velocidade">
+                    <option value="0.75">0.75x</option>
+                    <option value="1" selected>1x</option>
+                    <option value="1.25">1.25x</option>
+                    <option value="1.5">1.5x</option>
+                    <option value="2">2x</option>
+                </select>
+                <select class="voice-select" id="voiceSelect" onchange="changeVoice(this.value)" title="Voz">
+                    <option value="pt-BR-AntonioNeural">Antonio</option>
+                </select>
             </div>
         </div>
     </div>
@@ -537,8 +543,8 @@ audio.addEventListener('ended', () => {
     if(currentChunkIndex<currentChunks.length-1) nextChunk(); else { isPlaying=false; updatePlayButton(); showToast('Leitura concluída!'); }
 });
 
-function seekAudio(e) { if(!audio.duration) return; const b=document.getElementById('pBar'),r=b.getBoundingClientRect(); audio.currentTime=((e.clientX-r.left)/r.width)*audio.duration; }
-function setSpeed(s) { currentSpeed=s; audio.playbackRate=s; document.querySelectorAll('.spd-btn').forEach(b=>b.classList.toggle('active',parseFloat(b.textContent)===s)); }
+function seekAudio(e) { if(!audio.duration || !isFinite(audio.duration)) return; const b=document.getElementById('pBar'),r=b.getBoundingClientRect(); audio.currentTime=((e.clientX-r.left)/r.width)*audio.duration; }
+function setSpeed(s) { currentSpeed=s; audio.playbackRate=s; }
 
 async function nextChunk() { if(currentChunkIndex<currentChunks.length-1){currentChunkIndex++;updateUI();if(isPlaying) await playCurrentChunk();} }
 async function prevChunk() { if(currentChunkIndex>0){currentChunkIndex--;updateUI();if(isPlaying) await playCurrentChunk();} }
@@ -782,6 +788,48 @@ updateHighlight = function() {
     _origUpdateHighlight();
     updatePdfHighlight();
 };
+
+// === VOZES ===
+let selectedVoice = 'pt-BR-AntonioNeural';
+
+async function loadVoices() {
+    try {
+        const r = await fetch('/api/voices?language=pt-BR');
+        const d = await r.json();
+        const sel = document.getElementById('voiceSelect');
+        sel.innerHTML = d.voices.map(v => {
+            const name = v.name.replace('pt-BR-', '').replace('Neural', '');
+            const gender = v.gender === 'Male' ? '' : '';
+            return `<option value="${v.name}" ${v.name === selectedVoice ? 'selected' : ''}>${gender} ${name}</option>`;
+        }).join('');
+    } catch {}
+}
+
+function changeVoice(voice) {
+    selectedVoice = voice;
+    // Limpar cache de áudio (precisa regenerar com nova voz)
+    prefetchCache = {};
+    showToast(`Voz: ${voice.replace('pt-BR-', '').replace('Neural', '')}`);
+}
+
+// Carregar vozes ao abrir reader
+const _origOpen = openDocument;
+openDocument = async function(docId) {
+    await _origOpen(docId);
+    loadVoices();
+};
+
+// === PRÉ-GERAR CHUNKS em background ===
+async function prefetchChunks(startIdx, count) {
+    for (let i = startIdx; i < Math.min(startIdx + count, currentChunks.length); i++) {
+        if (prefetchCache[i]) continue;
+        try {
+            const r = await fetch(`/api/documents/${currentDoc.id}/chunks/${i}/audio`, {method:'POST'});
+            const d = await r.json();
+            if (d.audio_url) prefetchCache[i] = d;
+        } catch {}
+    }
+}
 </script>
 </body>
 </html>

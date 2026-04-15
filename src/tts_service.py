@@ -9,12 +9,13 @@ VOICE = os.environ.get("TTS_VOICE", "pt-BR-AntonioNeural")
 AUDIO_DIR = os.environ.get("AUDIO_DIR", "/app/data/audio")
 
 
-async def generate_audio(text: str, chunk_id: str, rate: str = "+0%", pitch: str = "+0Hz") -> dict:
+async def generate_audio(text: str, chunk_id: str, rate: str = "+0%", pitch: str = "+0Hz", voice: str = None) -> dict:
     """Gera áudio MP3 + word boundaries JSON.
 
     Retorna {path, filename, boundaries_file, cached}
     """
-    cache_key = hashlib.md5(f"{text}:{VOICE}:{rate}:{pitch}".encode()).hexdigest()[:12]
+    use_voice = voice or VOICE
+    cache_key = hashlib.md5(f"{text}:{use_voice}:{rate}:{pitch}".encode()).hexdigest()[:12]
     filename = f"{chunk_id}_{cache_key}.mp3"
     boundaries_filename = f"{chunk_id}_{cache_key}.json"
     filepath = os.path.join(AUDIO_DIR, filename)
@@ -27,7 +28,7 @@ async def generate_audio(text: str, chunk_id: str, rate: str = "+0%", pitch: str
 
     communicate = edge_tts.Communicate(
         text=text,
-        voice=VOICE,
+        voice=use_voice,
         rate=rate,
         pitch=pitch,
         boundary="WordBoundary",

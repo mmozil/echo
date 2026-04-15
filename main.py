@@ -328,12 +328,13 @@ async def generate_chunk_audio(
     chunk_index: int,
     rate: str = Query(default="+0%", description="Velocidade: -50% a +100%"),
     pitch: str = Query(default="+0Hz", description="Tom: -50Hz a +50Hz"),
+    voice: str = Query(default="", description="Voz (ex: pt-BR-AntonioNeural)"),
 ):
     chunk = get_chunk(doc_id, chunk_index)
     if not chunk:
         raise HTTPException(404, "Chunk não encontrado")
 
-    result = await generate_audio(chunk["text_content"], chunk["id"], rate=rate, pitch=pitch)
+    result = await generate_audio(chunk["text_content"], chunk["id"], rate=rate, pitch=pitch, voice=voice or None)
 
     if not result["cached"]:
         # Estimar duração (~150 palavras/min para pt-BR)
