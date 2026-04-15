@@ -127,31 +127,43 @@
         .text-view .word.active { background: var(--highlight); padding: 1px 2px; }
         .text-view .word.spoken { color: var(--ink); }
 
-        /* === PLAYER BAR — floating pill === */
-        .player-bar { flex-shrink: 0; padding: 0 24px 16px; pointer-events: none; }
-        .player-pill { pointer-events: all; background: var(--ink); color: white; border-radius: 40px; display: flex; align-items: center; gap: 6px; padding: 6px 8px; max-width: 420px; margin: 0 auto; box-shadow: 0 4px 24px rgba(0,0,0,0.18); }
+        /* === PLAYER BAR — Speechify replica === */
+        .player-bar { flex-shrink: 0; padding: 0 20px 14px; pointer-events: none; }
+        .player-pill { pointer-events: all; background: #2C2C2E; color: white; border-radius: 16px; max-width: 440px; margin: 0 auto; box-shadow: 0 6px 28px rgba(0,0,0,0.25); overflow: hidden; }
 
-        .pb-icon { width: 32px; height: 32px; border-radius: 50%; background: transparent; border: none; color: rgba(255,255,255,0.5); cursor: pointer; display: flex; align-items: center; justify-content: center; transition: color 0.12s; }
-        .pb-icon:hover { color: white; }
-        .pb-icon svg { width: 16px; height: 16px; }
+        /* Progress bar topo */
+        .pp-progress { height: 2px; background: rgba(255,255,255,0.1); cursor: pointer; }
+        .pp-progress:hover { height: 3px; }
+        .pfill { height: 100%; background: #3478F6; transition: width 0.1s linear; }
 
-        .play-btn { width: 40px; height: 40px; border-radius: 50%; background: white; border: none; color: var(--ink); cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.12s; flex-shrink: 0; }
-        .play-btn:hover { transform: scale(1.06); }
-        .play-btn svg { width: 16px; height: 16px; }
+        /* Row 1: time + chapter */
+        .pp-row1 { display: flex; align-items: center; padding: 8px 16px 2px; gap: 8px; }
+        .pp-time { font-size: 11px; font-family: var(--font-m); color: rgba(255,255,255,0.45); white-space: nowrap; min-width: 44px; }
+        .pp-time.r { text-align: right; }
+        .pp-chapter { flex: 1; display: flex; align-items: center; justify-content: center; gap: 4px; font-size: 12px; font-weight: 500; color: rgba(255,255,255,0.8); cursor: pointer; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+        .pp-chapter:hover { color: white; }
+        .pp-chapter svg { width: 12px; height: 12px; flex-shrink: 0; opacity: 0.5; }
 
-        .skip-b { width: 30px; height: 30px; border-radius: 50%; background: transparent; border: none; color: rgba(255,255,255,0.6); cursor: pointer; display: flex; align-items: center; justify-content: center; }
-        .skip-b:hover { color: white; }
-        .skip-b svg { width: 14px; height: 14px; }
+        /* Row 2: controls */
+        .pp-row2 { display: flex; align-items: center; justify-content: center; padding: 4px 16px 10px; gap: 16px; }
 
-        .pb-select { padding: 0; border: none; background: transparent; color: rgba(255,255,255,0.5); cursor: pointer; font-family: var(--font-b); font-size: 10px; font-weight: 600; appearance: none; -webkit-appearance: none; }
-        .pb-select:hover { color: white; }
-        .pb-select option { background: var(--ink); color: white; }
+        .pp-voice { width: 28px; height: 28px; border-radius: 50%; border: none; background: transparent; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 18px; padding: 0; }
+        .pp-voice:hover { background: rgba(255,255,255,0.1); }
 
-        .pb-progress { flex: 1; height: 3px; background: rgba(255,255,255,0.15); border-radius: 2px; cursor: pointer; min-width: 60px; }
-        .pb-progress:hover { height: 4px; }
-        .pfill { height: 100%; background: white; border-radius: 2px; transition: width 0.1s linear; }
+        .pp-skip { width: 36px; height: 36px; border-radius: 50%; background: transparent; border: none; color: rgba(255,255,255,0.75); cursor: pointer; display: flex; align-items: center; justify-content: center; position: relative; }
+        .pp-skip:hover { color: white; }
+        .pp-skip svg { width: 22px; height: 22px; }
+        .pp-skip-num { position: absolute; font-size: 8px; font-weight: 700; font-family: var(--font-b); }
 
-        .ptime { font-size: 9px; font-family: var(--font-m); color: rgba(255,255,255,0.35); white-space: nowrap; }
+        .play-btn { width: 48px; height: 48px; border-radius: 50%; background: #3478F6; border: none; color: white; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.12s; flex-shrink: 0; }
+        .play-btn:hover { transform: scale(1.06); background: #2D6CE6; }
+        .play-btn svg { width: 22px; height: 22px; }
+
+        .pp-speed { background: transparent; border: 1px solid rgba(255,255,255,0.25); color: rgba(255,255,255,0.75); border-radius: 14px; padding: 4px 10px; font-size: 12px; font-weight: 600; font-family: var(--font-b); cursor: pointer; white-space: nowrap; appearance: none; -webkit-appearance: none; }
+        .pp-speed:hover { border-color: rgba(255,255,255,0.5); color: white; }
+        .pp-speed option { background: #2C2C2E; color: white; }
+
+        .pb-select { display: none; }
 
         .loading-spinner { width: 18px; height: 18px; border: 2px solid var(--border); border-top-color: var(--ink); border-radius: 50%; animation: spin 0.6s linear infinite; }
         @keyframes spin { to { transform: rotate(360deg); } }
@@ -242,23 +254,38 @@
 
     <div class="player-bar">
         <div class="player-pill">
-            <select class="pb-select" id="voiceSelect" onchange="changeVoice(this.value)" title="Voz">
-                <option value="pt-BR-AntonioNeural">Antonio</option>
-            </select>
-            <button class="skip-b" onclick="prevChunk()" title="Anterior"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg></button>
-            <button class="play-btn" id="playBtn" onclick="togglePlay()">
-                <svg id="playIcon" viewBox="0 0 24 24" fill="currentColor"><polygon points="8 5 19 12 8 19 8 5"/></svg>
-                <svg id="pauseIcon" viewBox="0 0 24 24" fill="currentColor" style="display:none"><rect x="6" y="5" width="4" height="14"/><rect x="14" y="5" width="4" height="14"/></svg>
-            </button>
-            <button class="skip-b" onclick="nextChunk()" title="Próximo"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 6h2v12h-2zm-10 0l8.5 6L6 18z"/></svg></button>
-            <div class="pb-progress" id="pBar" onclick="seekAudio(event)"><div class="pfill" id="pFill" style="width:0%"></div></div>
-            <span class="ptime" id="curTime">0:00</span>
-            <select class="pb-select" onchange="setSpeed(parseFloat(this.value))" title="Velocidade">
-                <option value="0.75">0.75</option>
-                <option value="1" selected>1x</option>
-                <option value="1.5">1.5</option>
-                <option value="2">2x</option>
-            </select>
+            <div class="pp-progress" id="pBar" onclick="seekAudio(event)"><div class="pfill" id="pFill" style="width:0%"></div></div>
+            <div class="pp-row1">
+                <span class="pp-time" id="curTime">0:00</span>
+                <div class="pp-chapter" id="ppChapter" onclick="toggleSidebar()">
+                    <span id="ppChapterText">Selecione para ouvir</span>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+                </div>
+                <span class="pp-time r" id="totTime">0:00</span>
+            </div>
+            <div class="pp-row2">
+                <button class="pp-voice" id="voiceBtn" onclick="cycleVoice()" title="Trocar voz">🇧🇷</button>
+                <button class="pp-skip" onclick="skipBack()" title="Voltar 10s">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 4v6h6"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+                    <span class="pp-skip-num" style="top:13px;left:11px">10</span>
+                </button>
+                <button class="play-btn" id="playBtn" onclick="togglePlay()">
+                    <svg id="playIcon" viewBox="0 0 24 24" fill="currentColor"><polygon points="8 5 20 12 8 19 8 5"/></svg>
+                    <svg id="pauseIcon" viewBox="0 0 24 24" fill="currentColor" style="display:none"><rect x="6" y="5" width="4" height="14"/><rect x="14" y="5" width="4" height="14"/></svg>
+                </button>
+                <button class="pp-skip" onclick="skipForward()" title="Avançar 10s">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                    <span class="pp-skip-num" style="top:13px;right:11px">10</span>
+                </button>
+                <select class="pp-speed" onchange="setSpeed(parseFloat(this.value))" title="Velocidade">
+                    <option value="0.5">0.5x</option>
+                    <option value="0.75">0.75x</option>
+                    <option value="1" selected>1x</option>
+                    <option value="1.25">1.25x</option>
+                    <option value="1.5">1.5x</option>
+                    <option value="2">2x</option>
+                </select>
+            </div>
         </div>
     </div>
 </div>
@@ -347,6 +374,9 @@ async function openDocument(docId) {
     // Detectar scroll manual (para não travar tela durante playback)
     const pv = document.getElementById('pdfView');
     pv.onwheel = pv.ontouchmove = () => { userScrolling = true; clearTimeout(userScrollTimer); userScrollTimer = setTimeout(() => { userScrolling = false; }, 4000); };
+
+    // Atualizar player
+    updateChapterDisplay();
 
     // Pré-gerar áudio dos primeiros 3 chunks
     prefetchChunks(currentChunkIndex, 3);
@@ -540,20 +570,64 @@ audio.addEventListener('ended', () => {
 function seekAudio(e) { if(!audio.duration || !isFinite(audio.duration)) return; const b=document.getElementById('pBar'),r=b.getBoundingClientRect(); audio.currentTime=((e.clientX-r.left)/r.width)*audio.duration; }
 function setSpeed(s) { currentSpeed=s; audio.playbackRate=s; }
 
+function skipBack() { if(audio.src) audio.currentTime = Math.max(0, audio.currentTime - 10); }
+function skipForward() { if(audio.src) audio.currentTime = Math.min(audio.duration || 0, audio.currentTime + 10); }
+
+// Ciclar entre vozes pt-BR
+let voiceList = [];
+let voiceIdx = 0;
+const voiceFlags = { 'pt-BR': '🇧🇷', 'en-US': '🇺🇸', 'es-ES': '🇪🇸' };
+
+async function cycleVoice() {
+    if (!voiceList.length) {
+        const r = await fetch('/api/voices?language=pt-BR');
+        const d = await r.json();
+        voiceList = d.voices || [];
+    }
+    if (!voiceList.length) return;
+    voiceIdx = (voiceIdx + 1) % voiceList.length;
+    selectedVoice = voiceList[voiceIdx].name;
+    prefetchCache = {};
+    const name = selectedVoice.replace('pt-BR-','').replace('Neural','');
+    showToast(`Voz: ${name}`);
+}
+
+function updateChapterDisplay() {
+    const el = document.getElementById('ppChapterText');
+    if (!el || !currentChunks.length) return;
+    // Encontrar nome do capítulo do TOC correspondente à página atual
+    const chunk = currentChunks[currentChunkIndex];
+    if (!chunk) return;
+    const page = chunk.page;
+    let chapterName = `Trecho ${currentChunkIndex + 1} de ${currentChunks.length}`;
+    if (tocData.length) {
+        for (let i = tocData.length - 1; i >= 0; i--) {
+            if (tocData[i].page <= page) { chapterName = tocData[i].title; break; }
+        }
+    }
+    el.textContent = chapterName;
+}
+
 async function nextChunk() { if(currentChunkIndex<currentChunks.length-1){currentChunkIndex++;updateUI();if(isPlaying) await playCurrentChunk();} }
 async function prevChunk() { if(currentChunkIndex>0){currentChunkIndex--;updateUI();if(isPlaying) await playCurrentChunk();} }
 async function goToChunk(i) { currentChunkIndex=i; updateUI(); await playCurrentChunk(); }
 
 function updateUI() {
-    document.getElementById('chunkLabel').textContent=`${currentChunkIndex+1} / ${currentChunks.length}`;
+    const cl=document.getElementById('chunkLabel'); if(cl) cl.textContent=`${currentChunkIndex+1} / ${currentChunks.length}`;
+    updateChapterDisplay();
     loadChunkText(currentChunkIndex);
-    // Só scrollar para a página, não recarregar todas
     if (currentChunks[currentChunkIndex]) {
         scrollPdfToPage(currentChunks[currentChunkIndex].page);
     }
 }
 
-function fmt(s){return `${Math.floor(s/60)}:${Math.floor(s%60).toString().padStart(2,'0')}`;}
+function fmt(s) {
+    if (!isFinite(s) || isNaN(s)) return '0:00';
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const sec = Math.floor(s % 60).toString().padStart(2, '0');
+    return h > 0 ? `${h}:${m.toString().padStart(2,'0')}:${sec}` : `${m}:${sec}`;
+}
 function showToast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),3000);}
 
 // === SIDEBAR ===
