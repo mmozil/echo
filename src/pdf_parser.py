@@ -23,10 +23,10 @@ def extract_text_from_pdf(file_path: str) -> list[dict]:
     return pages
 
 
-def chunk_pages(pages: list[dict], max_chars: int = 3000) -> list[dict]:
+def chunk_pages(pages: list[dict], max_chars: int = 1200) -> list[dict]:
     """Divide páginas em chunks de tamanho adequado para TTS.
 
-    Cada chunk tem ~3000 chars (aprox. 2-3 min de áudio).
+    Cada chunk tem ~1200 chars (aprox. 40-60s de áudio) — rápido para gerar.
     Respeita limites de parágrafo quando possível.
     """
     chunks = []

@@ -377,6 +377,13 @@ async function openDocument(docId) {
     document.getElementById('libraryView').classList.add('hidden');
     document.getElementById('playerView').classList.add('active');
     await loadChunkText(currentChunkIndex);
+
+    // Pré-gerar áudio do chunk atual em background (para play instantâneo)
+    prefetchCache = {};
+    fetch(`/api/documents/${currentDoc.id}/chunks/${currentChunkIndex}/audio`, { method: 'POST' })
+        .then(r => r.json())
+        .then(data => { if (data.audio_url) prefetchCache[currentChunkIndex] = data; })
+        .catch(() => {});
 }
 
 function showLibrary() {
@@ -397,6 +404,8 @@ function renderChapters() {
 }
 
 // --- Audio ---
+let prefetchCache = {}; // cache de áudio pré-gerado { chunkIndex: { audio_url, boundaries_url } }
+
 async function togglePlay() { if (isPlaying) pauseAudio(); else await playCurrentChunk(); }
 
 async function playCurrentChunk() {
@@ -404,10 +413,16 @@ async function playCurrentChunk() {
     stopHighlightLoop();
     showPlayLoading(true);
     try {
-        // 1. Gerar áudio (retorna URL + boundaries URL)
-        const res = await fetch(`/api/documents/${currentDoc.id}/chunks/${currentChunkIndex}/audio`, { method: 'POST' });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.detail || 'Erro');
+        // 1. Gerar áudio (usa cache se disponível)
+        let data;
+        if (prefetchCache[currentChunkIndex]) {
+            data = prefetchCache[currentChunkIndex];
+            delete prefetchCache[currentChunkIndex];
+        } else {
+            const res = await fetch(`/api/documents/${currentDoc.id}/chunks/${currentChunkIndex}/audio`, { method: 'POST' });
+            data = await res.json();
+            if (!data.audio_url) throw new Error(data.detail || 'Erro');
+        }
 
         // 2. Carregar texto no DOM e boundaries em paralelo
         const [_, bData] = await Promise.all([
@@ -428,6 +443,9 @@ async function playCurrentChunk() {
         showPlayLoading(false);
         startHighlightLoop();
 
+        // 5. Pre-fetch próximo chunk em background
+        prefetchNextChunk();
+
         fetch(`/api/documents/${currentDoc.id}/progress?current_chunk=${currentChunkIndex}`, { method: 'PUT' });
     } catch (err) {
         showPlayLoading(false);
@@ -435,8 +453,18 @@ async function playCurrentChunk() {
     }
 }
 
+async function prefetchNextChunk() {
+    const next = currentChunkIndex + 1;
+    if (next >= currentChunks.length || prefetchCache[next]) return;
+    try {
+        const res = await fetch(`/api/documents/${currentDoc.id}/chunks/${next}/audio`, { method: 'POST' });
+        const data = await res.json();
+        if (data.audio_url) prefetchCache[next] = data;
+    } catch {}
+}
+
 function pauseAudio() { audio.pause(); isPlaying = false; updatePlayButton(); stopHighlightLoop(); }
-function stopAudio() { audio.pause(); audio.src = ''; isPlaying = false; updatePlayButton(); stopHighlightLoop(); wordBoundaries = []; }
+function stopAudio() { audio.pause(); audio.src = ''; isPlaying = false; updatePlayButton(); stopHighlightLoop(); wordBoundaries = []; prefetchCache = {}; }
 
 function updatePlayButton() {
     document.getElementById('playIcon').style.display = isPlaying ? 'none' : 'block';
@@ -451,19 +479,17 @@ function showPlayLoading(on) {
 
 // --- Highlight sync ---
 let boundaryToWordMap = []; // maps boundary index → DOM word index
+let highlightInterval = null;
 
 function startHighlightLoop() {
     stopHighlightLoop();
-    function tick() {
-        if (!isPlaying) return;
-        updateHighlight();
-        highlightRAF = requestAnimationFrame(tick);
-    }
-    highlightRAF = requestAnimationFrame(tick);
+    // setInterval é mais confiável que RAF para acompanhar áudio
+    highlightInterval = setInterval(updateHighlight, 50);
 }
 
 function stopHighlightLoop() {
     if (highlightRAF) { cancelAnimationFrame(highlightRAF); highlightRAF = null; }
+    if (highlightInterval) { clearInterval(highlightInterval); highlightInterval = null; }
 }
 
 function buildBoundaryMap() {
@@ -581,7 +607,7 @@ function seekToWord(domWordIdx) {
 
 // Garantir que o highlight loop está ativo sempre que o áudio toca
 audio.addEventListener('playing', () => {
-    if (!highlightRAF && wordBoundaries.length && boundaryToWordMap.length) {
+    if (!highlightInterval && wordBoundaries.length && boundaryToWordMap.length) {
         startHighlightLoop();
     }
 });
