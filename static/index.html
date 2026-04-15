@@ -441,15 +441,14 @@ async function playCurrentChunk() {
     stopHighlightLoop();
     showPlayLoading(true);
     try {
+        // 1 request: retorna audio_url + boundaries + text inline
         let data;
         if (prefetchCache[currentChunkIndex]) { data = prefetchCache[currentChunkIndex]; delete prefetchCache[currentChunkIndex]; }
         else { const r = await fetch(`/api/documents/${currentDoc.id}/chunks/${currentChunkIndex}/audio`,{method:'POST'}); data = await r.json(); if(!data.audio_url) throw new Error(data.detail||'Erro'); }
 
-        const [_, bData] = await Promise.all([
-            loadChunkText(currentChunkIndex),
-            fetch(data.boundaries_url).then(r=>r.json()).catch(()=>[]),
-        ]);
-        wordBoundaries = bData;
+        // Boundaries e texto vêm inline — sem requests extras
+        wordBoundaries = data.boundaries || [];
+        if (data.text) renderTextWithWords(data.text);
         buildBoundaryMap();
 
         audio.src = data.audio_url;
@@ -459,6 +458,7 @@ async function playCurrentChunk() {
         showPlayLoading(false);
         updatePlayButton();
         startHighlightLoop();
+        updateChapterDisplay();
 
         // Pré-carregar word positions da página do chunk atual (para highlight no PDF)
         const chunk = currentChunks[currentChunkIndex];
@@ -741,15 +741,7 @@ function highlightWordOnPdf(word, pageNum) {
             overlay.style.height = ((w.y1 - w.y0) * 100) + '%';
             pageEl.appendChild(overlay);
 
-            // Auto-scroll no PDF view (só se user não está scrollando manualmente)
-            if (currentView === 'pdf' && !userScrolling) {
-                const pv = document.getElementById('pdfView');
-                const rect = overlay.getBoundingClientRect();
-                const pvRect = pv.getBoundingClientRect();
-                if (rect.top < pvRect.top + 60 || rect.bottom > pvRect.bottom - 80) {
-                    programmaticScroll=true; pageEl.scrollIntoView({behavior:'smooth',block:'center'}); setTimeout(()=>{programmaticScroll=false;},1000);
-                }
-            }
+            // PDF view: SEM auto-scroll — user controla livremente
             return;
         }
     }

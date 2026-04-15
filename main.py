@@ -365,11 +365,21 @@ async def generate_chunk_audio(
         duration_ms = int((word_count / 150) * 60 * 1000)
         update_chunk_audio(chunk["id"], result["path"], duration_ms)
 
+    # Carregar boundaries inline (evita request extra)
+    import json as _json
+    boundaries = []
+    boundaries_path = os.path.join(AUDIO_DIR, result["boundaries_file"])
+    if os.path.exists(boundaries_path):
+        with open(boundaries_path, "r", encoding="utf-8") as f:
+            boundaries = _json.load(f)
+
     return {
         "audio_url": f"/api/audio/{result['filename']}",
-        "boundaries_url": f"/api/audio/{result['boundaries_file']}",
+        "boundaries": boundaries,
+        "text": chunk["text_content"],
         "cached": result["cached"],
         "chunk_index": chunk_index,
+        "page": chunk["page_number"],
     }
 
 
