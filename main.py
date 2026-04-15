@@ -53,7 +53,12 @@ def require_auth(request: Request) -> dict:
 # --- Páginas ---
 
 @app.get("/", response_class=HTMLResponse)
-async def index(request: Request):
+async def landing():
+    return FileResponse("static/landing.html")
+
+
+@app.get("/app", response_class=HTMLResponse)
+async def app_page(request: Request):
     user = get_current_user(request)
     if not user:
         return RedirectResponse("/login", status_code=302)
@@ -64,8 +69,16 @@ async def index(request: Request):
 async def login_page(request: Request):
     user = get_current_user(request)
     if user:
-        return RedirectResponse("/", status_code=302)
+        return RedirectResponse("/app", status_code=302)
     return FileResponse("static/login.html")
+
+
+@app.get("/register", response_class=HTMLResponse)
+async def register_page(request: Request):
+    user = get_current_user(request)
+    if user:
+        return RedirectResponse("/app", status_code=302)
+    return FileResponse("static/register.html")
 
 
 # --- Health ---

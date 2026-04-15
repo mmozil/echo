@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Echo — Seus documentos ganham voz</title>
+    <style>
+        @font-face { font-family: "SF Pro Display"; src: url("/static/fonts/SF-Pro-Display-Regular.otf") format("opentype"); font-weight: 400; font-display: swap; }
+        @font-face { font-family: "SF Pro Display"; src: url("/static/fonts/SF-Pro-Display-Medium.otf") format("opentype"); font-weight: 500; font-display: swap; }
+        @font-face { font-family: "SF Pro Display"; src: url("/static/fonts/SF-Pro-Display-Semibold.otf") format("opentype"); font-weight: 600; font-display: swap; }
+        @font-face { font-family: "SF Pro Display"; src: url("/static/fonts/SF-Pro-Display-Bold.otf") format("opentype"); font-weight: 700; font-display: swap; }
+
+        :root {
+            --ink: #1A1A1A;
+            --charcoal: #2D2D2D;
+            --slate: #64748B;
+            --mist: #94A3B8;
+            --cloud: #F1F5F9;
+            --snow: #FAFBFC;
+            --white: #FFFFFF;
+            --border: #E2E8F0;
+            --font: "SF Pro Display", -apple-system, BlinkMacSystemFont, sans-serif;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: var(--font);
+            background: var(--white);
+            color: var(--ink);
+            -webkit-font-smoothing: antialiased;
+        }
+
+        /* --- Nav --- */
+        .nav {
+            padding: 20px 48px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .nav-logo {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            text-decoration: none;
+        }
+
+        .nav-logo-icon {
+            width: 28px;
+            height: 28px;
+            position: relative;
+        }
+
+        .nav-logo-icon .w {
+            position: absolute;
+            border: 2px solid var(--ink);
+            border-radius: 50%;
+        }
+
+        .nav-logo-icon .w:nth-child(1) { width: 10px; height: 10px; top: 9px; left: 9px; background: var(--ink); }
+        .nav-logo-icon .w:nth-child(2) { width: 18px; height: 18px; top: 5px; left: 5px; opacity: 0.35; }
+        .nav-logo-icon .w:nth-child(3) { width: 26px; height: 26px; top: 1px; left: 1px; opacity: 0.15; }
+
+        .nav-logo-text {
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--ink);
+            letter-spacing: -0.5px;
+        }
+
+        .nav-actions { display: flex; align-items: center; gap: 8px; }
+
+        .nav-link {
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--slate);
+            text-decoration: none;
+            padding: 8px 16px;
+            border-radius: 8px;
+            transition: all 0.15s;
+        }
+
+        .nav-link:hover { color: var(--ink); background: var(--cloud); }
+
+        .nav-btn {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--white);
+            background: var(--ink);
+            text-decoration: none;
+            padding: 9px 20px;
+            border-radius: 8px;
+            transition: all 0.15s;
+        }
+
+        .nav-btn:hover { background: #000; }
+
+        /* --- Hero --- */
+        .hero {
+            text-align: center;
+            padding: 100px 24px 80px;
+            max-width: 720px;
+            margin: 0 auto;
+        }
+
+        .hero-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 14px;
+            border-radius: 20px;
+            background: var(--cloud);
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--slate);
+            margin-bottom: 28px;
+        }
+
+        .hero-badge-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: #22C55E;
+        }
+
+        .hero h1 {
+            font-size: 56px;
+            font-weight: 700;
+            letter-spacing: -1.5px;
+            line-height: 1.08;
+            margin-bottom: 20px;
+            color: var(--ink);
+        }
+
+        .hero h1 span {
+            color: var(--mist);
+        }
+
+        .hero p {
+            font-size: 18px;
+            line-height: 1.6;
+            color: var(--slate);
+            max-width: 480px;
+            margin: 0 auto 36px;
+        }
+
+        .hero-actions {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+        }
+
+        .hero-btn-primary {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 14px 28px;
+            background: var(--ink);
+            color: var(--white);
+            font-size: 15px;
+            font-weight: 600;
+            border-radius: 10px;
+            text-decoration: none;
+            transition: all 0.15s;
+            font-family: var(--font);
+        }
+
+        .hero-btn-primary:hover { background: #000; transform: translateY(-1px); box-shadow: 0 4px 16px rgba(0,0,0,0.15); }
+
+        .hero-btn-secondary {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 14px 28px;
+            background: transparent;
+            color: var(--ink);
+            font-size: 15px;
+            font-weight: 500;
+            border-radius: 10px;
+            border: 1px solid var(--border);
+            text-decoration: none;
+            transition: all 0.15s;
+            font-family: var(--font);
+        }
+
+        .hero-btn-secondary:hover { background: var(--cloud); }
+
+        /* --- Features --- */
+        .features {
+            max-width: 960px;
+            margin: 0 auto;
+            padding: 0 24px 100px;
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 32px;
+        }
+
+        .feature {
+            text-align: center;
+            padding: 32px 24px;
+        }
+
+        .feature-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 12px;
+            background: var(--cloud);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 16px;
+        }
+
+        .feature-icon svg { width: 22px; height: 22px; color: var(--ink); }
+
+        .feature h3 {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .feature p {
+            font-size: 14px;
+            color: var(--slate);
+            line-height: 1.6;
+        }
+
+        /* --- How it works --- */
+        .how {
+            background: var(--snow);
+            padding: 80px 24px;
+        }
+
+        .how-inner {
+            max-width: 720px;
+            margin: 0 auto;
+            text-align: center;
+        }
+
+        .how h2 {
+            font-size: 32px;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+            margin-bottom: 48px;
+        }
+
+        .steps {
+            display: flex;
+            gap: 40px;
+            text-align: left;
+        }
+
+        .step {
+            flex: 1;
+        }
+
+        .step-num {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: var(--ink);
+            color: var(--white);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 14px;
+        }
+
+        .step h3 {
+            font-size: 15px;
+            font-weight: 600;
+            margin-bottom: 6px;
+        }
+
+        .step p {
+            font-size: 14px;
+            color: var(--slate);
+            line-height: 1.6;
+        }
+
+        /* --- CTA --- */
+        .cta {
+            text-align: center;
+            padding: 80px 24px;
+        }
+
+        .cta h2 {
+            font-size: 36px;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+            margin-bottom: 16px;
+        }
+
+        .cta p {
+            font-size: 16px;
+            color: var(--slate);
+            margin-bottom: 28px;
+        }
+
+        /* --- Footer --- */
+        .footer {
+            border-top: 1px solid var(--border);
+            padding: 24px 48px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .footer-text {
+            font-size: 13px;
+            color: var(--mist);
+        }
+
+        .footer-link {
+            font-size: 13px;
+            color: var(--slate);
+            text-decoration: none;
+        }
+
+        .footer-link:hover { color: var(--ink); }
+
+        /* --- Responsive --- */
+        @media (max-width: 768px) {
+            .nav { padding: 16px 20px; }
+            .hero { padding: 60px 20px 48px; }
+            .hero h1 { font-size: 36px; }
+            .hero p { font-size: 16px; }
+            .hero-actions { flex-direction: column; }
+            .features { grid-template-columns: 1fr; gap: 8px; }
+            .steps { flex-direction: column; gap: 24px; }
+            .footer { flex-direction: column; gap: 8px; padding: 20px; }
+        }
+    </style>
+</head>
+<body>
+
+<nav class="nav">
+    <a href="/" class="nav-logo">
+        <div class="nav-logo-icon">
+            <div class="w"></div><div class="w"></div><div class="w"></div>
+        </div>
+        <span class="nav-logo-text">echo.</span>
+    </a>
+    <div class="nav-actions">
+        <a href="/login" class="nav-link">Entrar</a>
+        <a href="/register" class="nav-btn">Criar conta</a>
+    </div>
+</nav>
+
+<section class="hero">
+    <div class="hero-badge">
+        <div class="hero-badge-dot"></div>
+        Gratuito — voz AI sem limite
+    </div>
+    <h1>Seus documentos<br>ganham <span>voz</span></h1>
+    <p>Transforme qualquer PDF em audiobook com voz AI natural. Leia mais, em menos tempo, sem esforço.</p>
+    <div class="hero-actions">
+        <a href="/register" class="hero-btn-primary">
+            Comece agora
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+        </a>
+        <a href="/login" class="hero-btn-secondary">Já tenho conta</a>
+    </div>
+</section>
+
+<section class="features">
+    <div class="feature">
+        <div class="feature-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>
+        </div>
+        <h3>Voz natural</h3>
+        <p>Microsoft Neural TTS com a voz do Antonio. Qualidade profissional, gratuito e sem limite de uso.</p>
+    </div>
+    <div class="feature">
+        <div class="feature-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+        </div>
+        <h3>Qualquer PDF</h3>
+        <p>Livros, artigos, apostilas, relatórios. Upload e pronto — o texto é extraído automaticamente.</p>
+    </div>
+    <div class="feature">
+        <div class="feature-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        </div>
+        <h3>Progresso salvo</h3>
+        <p>Continue de onde parou. Velocidade ajustável de 0.75x a 2x. Auto-avança entre trechos.</p>
+    </div>
+</section>
+
+<section class="how">
+    <div class="how-inner">
+        <h2>Como funciona</h2>
+        <div class="steps">
+            <div class="step">
+                <div class="step-num">1</div>
+                <h3>Faça upload do PDF</h3>
+                <p>Arraste ou selecione o arquivo. O texto é extraído página por página automaticamente.</p>
+            </div>
+            <div class="step">
+                <div class="step-num">2</div>
+                <h3>Aperte play</h3>
+                <p>A voz do Antonio lê cada trecho para você. O texto acompanha em tempo real.</p>
+            </div>
+            <div class="step">
+                <div class="step-num">3</div>
+                <h3>Ouça em qualquer lugar</h3>
+                <p>Seu progresso é salvo. Pause e continue quando quiser, na velocidade que preferir.</p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="cta">
+    <h2>Comece a ouvir seus documentos</h2>
+    <p>Crie sua conta gratuita e envie seu primeiro PDF.</p>
+    <a href="/register" class="hero-btn-primary">
+        Criar conta gratuita
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+    </a>
+</section>
+
+<footer class="footer">
+    <span class="footer-text">echo. — hovio.com.br</span>
+    <a href="/login" class="footer-link">Entrar</a>
+</footer>
+
+</body>
+</html>
