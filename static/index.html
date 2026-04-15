@@ -127,29 +127,32 @@
         .text-view .word.active { background: var(--highlight); padding: 1px 2px; }
         .text-view .word.spoken { color: var(--ink); }
 
-        /* === PLAYER BAR — Speechify style === */
-        .player-bar { flex-shrink: 0; background: var(--ink); color: white; }
-        .player-bar-progress { height: 2px; background: rgba(255,255,255,0.15); cursor: pointer; }
-        .player-bar-progress:hover { height: 4px; }
-        .pfill { height: 100%; background: white; transition: width 0.1s linear; }
-        .player-bar-row { display: flex; align-items: center; padding: 6px 16px; gap: 16px; }
+        /* === PLAYER BAR — Speechify exact === */
+        .player-bar { flex-shrink: 0; background: #1C1C1E; color: white; }
+        .player-bar-progress { height: 2px; background: rgba(255,255,255,0.1); cursor: pointer; }
+        .player-bar-progress:hover { height: 3px; }
+        .pfill { height: 100%; background: #34C759; transition: width 0.1s linear; }
+        .player-bar-row { display: flex; align-items: center; padding: 8px 20px; }
 
-        .pb-left { display: flex; align-items: center; gap: 8px; min-width: 100px; }
-        .pb-center { display: flex; align-items: center; gap: 12px; flex: 1; justify-content: center; }
-        .pb-right { display: flex; align-items: center; gap: 8px; min-width: 100px; justify-content: flex-end; }
+        .pb-icon { width: 36px; height: 36px; border-radius: 50%; background: transparent; border: none; color: rgba(255,255,255,0.55); cursor: pointer; display: flex; align-items: center; justify-content: center; transition: color 0.12s; font-size: 11px; font-weight: 600; font-family: var(--font-b); }
+        .pb-icon:hover { color: white; }
+        .pb-icon svg { width: 18px; height: 18px; }
 
-        .play-btn { width: 40px; height: 40px; border-radius: 50%; background: white; border: none; color: var(--ink); cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.12s; }
-        .play-btn:hover { transform: scale(1.08); }
-        .play-btn svg { width: 18px; height: 18px; }
-        .skip-b { width: 28px; height: 28px; border-radius: 50%; background: transparent; border: none; color: rgba(255,255,255,0.6); cursor: pointer; display: flex; align-items: center; justify-content: center; }
+        .pb-spacer { flex: 1; }
+
+        .play-btn { width: 48px; height: 48px; border-radius: 50%; background: #34C759; border: none; color: white; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.12s; margin: 0 8px; }
+        .play-btn:hover { transform: scale(1.06); background: #30B853; }
+        .play-btn svg { width: 20px; height: 20px; }
+
+        .skip-b { width: 36px; height: 36px; border-radius: 50%; background: transparent; border: none; color: rgba(255,255,255,0.7); cursor: pointer; display: flex; align-items: center; justify-content: center; }
         .skip-b:hover { color: white; }
-        .skip-b svg { width: 14px; height: 14px; }
+        .skip-b svg { width: 18px; height: 18px; }
 
-        .ptime { font-size: 10px; font-family: var(--font-m); color: rgba(255,255,255,0.5); }
-        .chunk-label { font-size: 10px; color: rgba(255,255,255,0.4); white-space: nowrap; }
+        .ptime { font-size: 10px; font-family: var(--font-m); color: rgba(255,255,255,0.35); position: absolute; bottom: 4px; left: 20px; }
 
-        .pb-select { padding: 3px 8px; border-radius: 4px; font-size: 10px; font-weight: 500; border: 1px solid rgba(255,255,255,0.2); background: transparent; color: rgba(255,255,255,0.7); cursor: pointer; font-family: var(--font-b); }
-        .pb-select option { background: var(--ink); color: white; }
+        .pb-select { padding: 0; border: none; background: transparent; color: rgba(255,255,255,0.55); cursor: pointer; font-family: var(--font-b); font-size: 11px; font-weight: 600; appearance: none; -webkit-appearance: none; }
+        .pb-select:hover { color: white; }
+        .pb-select option { background: #1C1C1E; color: white; }
 
         .loading-spinner { width: 18px; height: 18px; border: 2px solid var(--border); border-top-color: var(--ink); border-radius: 50%; animation: spin 0.6s linear infinite; }
         @keyframes spin { to { transform: rotate(360deg); } }
@@ -238,34 +241,42 @@
         <div class="text-view hidden" id="textView"></div>
     </div>
 
-    <div class="player-bar">
+    <div class="player-bar" style="position:relative">
         <div class="player-bar-progress" id="pBar" onclick="seekAudio(event)"><div class="pfill" id="pFill" style="width:0%"></div></div>
         <div class="player-bar-row">
-            <div class="pb-left">
-                <span class="ptime" id="curTime">0:00</span>
-                <span class="chunk-label" id="chunkLabel"></span>
-            </div>
-            <div class="pb-center">
-                <button class="skip-b" onclick="prevChunk()" title="Anterior"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg></button>
-                <button class="play-btn" id="playBtn" onclick="togglePlay()">
-                    <svg id="playIcon" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 18 12 6 20 6 4"/></svg>
-                    <svg id="pauseIcon" viewBox="0 0 24 24" fill="currentColor" style="display:none"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
-                </button>
-                <button class="skip-b" onclick="nextChunk()" title="Próximo"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 6h2v12h-2zm-10 0l8.5 6L6 18z"/></svg></button>
-            </div>
-            <div class="pb-right">
-                <select class="pb-select" onchange="setSpeed(parseFloat(this.value))" title="Velocidade">
-                    <option value="0.75">0.75x</option>
-                    <option value="1" selected>1x</option>
-                    <option value="1.25">1.25x</option>
-                    <option value="1.5">1.5x</option>
-                    <option value="2">2x</option>
-                </select>
-                <select class="pb-select" id="voiceSelect" onchange="changeVoice(this.value)" title="Voz">
-                    <option value="pt-BR-AntonioNeural">Antonio</option>
-                </select>
-            </div>
+            <!-- Left icons -->
+            <select class="pb-select" id="voiceSelect" onchange="changeVoice(this.value)" title="Voz">
+                <option value="pt-BR-AntonioNeural">Antonio</option>
+            </select>
+            <button class="pb-icon" onclick="setView(currentView==='pdf'?'text':'pdf')" title="Alternar visualização">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+            </button>
+
+            <div class="pb-spacer"></div>
+
+            <!-- Center: controls -->
+            <button class="skip-b" onclick="prevChunk()" title="Anterior"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg></button>
+            <button class="play-btn" id="playBtn" onclick="togglePlay()">
+                <svg id="playIcon" viewBox="0 0 24 24" fill="currentColor"><polygon points="7 4 19 12 7 20 7 4"/></svg>
+                <svg id="pauseIcon" viewBox="0 0 24 24" fill="currentColor" style="display:none"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+            </button>
+            <button class="skip-b" onclick="nextChunk()" title="Próximo"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 6h2v12h-2zm-10 0l8.5 6L6 18z"/></svg></button>
+
+            <div class="pb-spacer"></div>
+
+            <!-- Right icons -->
+            <select class="pb-select" onchange="setSpeed(parseFloat(this.value))" title="Velocidade">
+                <option value="0.75">0.75x</option>
+                <option value="1" selected>1x</option>
+                <option value="1.25">1.25x</option>
+                <option value="1.5">1.5x</option>
+                <option value="2">2x</option>
+            </select>
+            <button class="pb-icon" onclick="toggleSidebar()" title="Índice">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+            </button>
         </div>
+        <span class="ptime" id="curTime">0:00</span>
     </div>
 </div>
 
