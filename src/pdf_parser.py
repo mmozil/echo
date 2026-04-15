@@ -116,6 +116,81 @@ def render_page(file_path: str, page_num: int, output_path: str, width: int = 80
         return False
 
 
+def get_toc(file_path: str) -> list[dict]:
+    """Extrai Table of Contents do PDF."""
+    doc = fitz.open(file_path)
+    toc = doc.get_toc()
+    doc.close()
+    return [{"level": item[0], "title": item[1], "page": item[2]} for item in toc]
+
+
+def search_words_on_page(file_path: str, page_num: int, words: list[str]) -> dict:
+    """Busca palavras numa página e retorna suas posições relativas (0-1).
+
+    Retorna {page_width, page_height, results: [{word, rects: [{x0,y0,x1,y1}]}]}
+    """
+    doc = fitz.open(file_path)
+    if page_num < 1 or page_num > len(doc):
+        doc.close()
+        return {"page_width": 0, "page_height": 0, "results": []}
+
+    page = doc[page_num - 1]
+    pw = page.rect.width
+    ph = page.rect.height
+
+    results = []
+    for word in words:
+        rects = page.search_for(word)
+        results.append({
+            "word": word,
+            "rects": [
+                {
+                    "x0": round(r.x0 / pw, 4),
+                    "y0": round(r.y0 / ph, 4),
+                    "x1": round(r.x1 / pw, 4),
+                    "y1": round(r.y1 / ph, 4),
+                }
+                for r in rects[:3]  # máx 3 ocorrências por palavra
+            ],
+        })
+
+    doc.close()
+    return {"page_width": pw, "page_height": ph, "results": results}
+
+
+def get_word_positions_on_page(file_path: str, page_num: int) -> list[dict]:
+    """Retorna TODAS as palavras da página com suas posições relativas.
+
+    Retorna [{word, x0, y0, x1, y1}] em coordenadas relativas (0-1).
+    """
+    doc = fitz.open(file_path)
+    if page_num < 1 or page_num > len(doc):
+        doc.close()
+        return []
+
+    page = doc[page_num - 1]
+    pw = page.rect.width
+    ph = page.rect.height
+
+    # get_text("words") retorna (x0, y0, x1, y1, word, block_no, line_no, word_no)
+    raw = page.get_text("words")
+    words = [
+        {
+            "word": w[4],
+            "x0": round(w[0] / pw, 4),
+            "y0": round(w[1] / ph, 4),
+            "x1": round(w[2] / pw, 4),
+            "y1": round(w[3] / ph, 4),
+            "block": w[5],
+            "line": w[6],
+        }
+        for w in raw
+    ]
+
+    doc.close()
+    return words
+
+
 def _clean_text(text: str) -> str:
     """Limpa texto extraído de PDF."""
     # Remove hífens de quebra de linha

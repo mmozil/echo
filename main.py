@@ -15,7 +15,7 @@ from pydantic import BaseModel
 from src.database import init_db, create_document, list_documents, get_document, delete_document
 from src.database import save_chunk, get_chunks, get_chunk, update_chunk_audio, update_progress, get_progress
 from src.database import create_user, authenticate_user, create_session, get_user_by_session, delete_session
-from src.pdf_parser import extract_text_from_pdf, chunk_pages, get_pdf_info, extract_cover, render_page
+from src.pdf_parser import extract_text_from_pdf, chunk_pages, get_pdf_info, extract_cover, render_page, get_toc, get_word_positions_on_page
 
 PAGES_DIR = os.environ.get("PAGES_DIR", "/app/data/pages")
 
@@ -125,6 +125,36 @@ async def serve_page(doc_id: str, page_num: int):
             raise HTTPException(404, "Página inválida")
 
     return FileResponse(page_path, media_type="image/png")
+
+
+# --- TOC ---
+
+@app.get("/api/documents/{doc_id}/toc")
+async def get_document_toc(doc_id: str):
+    """Retorna Table of Contents do PDF."""
+    doc = get_document(doc_id)
+    if not doc:
+        raise HTTPException(404, "Documento não encontrado")
+    pdf_path = os.path.join(UPLOAD_DIR, doc["filename"])
+    if not os.path.exists(pdf_path):
+        return {"toc": []}
+    toc = get_toc(pdf_path)
+    return {"toc": toc, "total_pages": doc["total_pages"]}
+
+
+# --- Word positions (para highlight no PDF) ---
+
+@app.get("/api/documents/{doc_id}/pages/{page_num}/words")
+async def get_page_words(doc_id: str, page_num: int):
+    """Retorna todas as palavras da página com posições relativas (0-1)."""
+    doc = get_document(doc_id)
+    if not doc:
+        raise HTTPException(404, "Documento não encontrado")
+    pdf_path = os.path.join(UPLOAD_DIR, doc["filename"])
+    if not os.path.exists(pdf_path):
+        return {"words": []}
+    words = get_word_positions_on_page(pdf_path, page_num)
+    return {"words": words, "page": page_num}
 
 
 # --- Auth ---

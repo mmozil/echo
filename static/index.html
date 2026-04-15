@@ -85,14 +85,39 @@
         .view-toggle-btn.active { background: var(--white); color: var(--ink); box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
 
         /* Content area */
-        .reader-content { flex: 1; overflow: hidden; display: flex; justify-content: center; background: var(--snow); }
+        .reader-content { flex: 1; overflow: hidden; display: flex; background: var(--snow); }
+
+        /* Sidebar TOC */
+        .reader-sidebar { width: 260px; background: var(--white); border-right: 1px solid var(--border); overflow-y: auto; flex-shrink: 0; display: flex; flex-direction: column; }
+        .reader-sidebar.hidden { display: none; }
+        .sidebar-header { padding: 14px 16px 10px; font-size: 12px; font-weight: 600; color: var(--slate); text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+        .sidebar-tabs { display: flex; border-bottom: 1px solid var(--border); }
+        .sidebar-tab { flex: 1; padding: 10px 0; text-align: center; font-size: 12px; font-weight: 500; color: var(--mist); cursor: pointer; border: none; background: none; font-family: var(--font-b); border-bottom: 2px solid transparent; }
+        .sidebar-tab.active { color: var(--ink); border-bottom-color: var(--ink); }
+        .sidebar-content { flex: 1; overflow-y: auto; padding: 8px; }
+        .toc-item { padding: 8px 10px; border-radius: 6px; font-size: 12px; cursor: pointer; display: flex; align-items: flex-start; gap: 8px; color: var(--charcoal); line-height: 1.4; }
+        .toc-item:hover { background: var(--cloud); }
+        .toc-item.active { background: var(--accent-light); font-weight: 500; }
+        .toc-item.l2 { padding-left: 24px; font-size: 11px; color: var(--slate); }
+        .toc-page { font-size: 10px; color: var(--mist); margin-left: auto; flex-shrink: 0; }
+        .thumb-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; padding: 4px; }
+        .thumb-item { cursor: pointer; border-radius: 4px; overflow: hidden; border: 2px solid transparent; transition: border-color 0.15s; position: relative; }
+        .thumb-item:hover { border-color: var(--mist); }
+        .thumb-item.active { border-color: var(--ink); }
+        .thumb-item img { width: 100%; display: block; }
+        .thumb-num { position: absolute; bottom: 2px; right: 4px; font-size: 9px; color: var(--mist); background: rgba(255,255,255,0.8); padding: 1px 4px; border-radius: 3px; }
 
         /* PDF view */
-        .pdf-view { width: 100%; height: 100%; overflow-y: auto; display: flex; flex-direction: column; align-items: center; padding: 24px; gap: 8px; }
-        .pdf-view.hidden { display: none; }
-        .pdf-page { max-width: 700px; width: 100%; border-radius: 4px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); background: white; }
+        .pdf-main { flex: 1; overflow-y: auto; display: flex; flex-direction: column; align-items: center; padding: 24px; gap: 8px; }
+        .pdf-main.hidden { display: none; }
+        .pdf-page { max-width: 700px; width: 100%; border-radius: 4px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); background: white; position: relative; }
         .pdf-page img { width: 100%; display: block; border-radius: 4px; }
         .pdf-page-num { text-align: center; font-size: 11px; color: var(--mist); padding: 6px 0 16px; }
+
+        /* Highlight overlay no PDF */
+        .pdf-highlight { position: absolute; background: rgba(253,230,138,0.5); pointer-events: none; border-radius: 2px; transition: all 0.08s; }
+        .pdf-word-overlay { position: absolute; cursor: pointer; }
+        .pdf-word-overlay:hover { background: rgba(0,0,0,0.05); }
 
         /* Text view */
         .text-view { width: 100%; max-width: 680px; height: 100%; overflow-y: auto; padding: 32px 40px; scroll-behavior: smooth; }
@@ -180,10 +205,15 @@
 <!-- READER (full screen overlay) -->
 <div class="reader" id="reader">
     <div class="reader-header">
-        <button class="reader-back" onclick="closeReader()">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
-            Biblioteca
-        </button>
+        <div style="display:flex;align-items:center;gap:8px">
+            <button class="reader-back" onclick="closeReader()">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+                Biblioteca
+            </button>
+            <button class="btn-icon" onclick="toggleSidebar()" title="Navegação" style="width:28px;height:28px">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="15" y2="12"/><line x1="3" y1="18" x2="18" y2="18"/></svg>
+            </button>
+        </div>
         <div class="reader-title" id="readerTitle"></div>
         <div class="view-toggle">
             <button class="view-toggle-btn active" id="togglePdf" onclick="setView('pdf')">
@@ -198,7 +228,14 @@
     </div>
 
     <div class="reader-content">
-        <div class="pdf-view" id="pdfView"></div>
+        <div class="reader-sidebar" id="readerSidebar">
+            <div class="sidebar-tabs">
+                <button class="sidebar-tab active" onclick="setSidebarTab('toc')">Conteúdo</button>
+                <button class="sidebar-tab" onclick="setSidebarTab('thumbs')">Páginas</button>
+            </div>
+            <div class="sidebar-content" id="sidebarContent"></div>
+        </div>
+        <div class="pdf-main" id="pdfView"></div>
         <div class="text-view hidden" id="textView"></div>
     </div>
 
@@ -304,7 +341,9 @@ async function openDocument(docId) {
     document.getElementById('libraryView').classList.add('hidden');
     document.querySelector('.header').style.display = 'none';
 
-    // Carregar PDF pages e texto
+    // Carregar TOC, PDF pages e texto
+    pageWordPositions = {};
+    loadToc();
     loadPdfPages();
     await loadChunkText(currentChunkIndex);
 
@@ -325,12 +364,21 @@ function loadPdfPages() {
     const pv = document.getElementById('pdfView');
     if (!currentDoc) return;
 
-    // Carregar TODAS as páginas com lazy loading (browser gerencia)
     let html = '';
     for (let p = 1; p <= currentDoc.total_pages; p++) {
         html += `<div class="pdf-page" id="pdf-page-${p}"><img src="/api/documents/${currentDoc.id}/pages/${p}.png" alt="Página ${p}" loading="lazy"></div><div class="pdf-page-num">Página ${p} de ${currentDoc.total_pages}</div>`;
     }
     pv.innerHTML = html;
+
+    // Setup click-to-read em cada página e pré-carregar word positions
+    for (let p = 1; p <= currentDoc.total_pages; p++) {
+        setupPdfClickToRead(p);
+        // Pré-carregar words das primeiras páginas e da página do chunk atual
+        const chunk = currentChunks[currentChunkIndex];
+        if (p <= 3 || (chunk && Math.abs(p - chunk.page) <= 2)) {
+            loadPageWords(p);
+        }
+    }
 
     // Scroll para a página do chunk atual
     const chunk = currentChunks[currentChunkIndex];
@@ -381,6 +429,10 @@ async function playCurrentChunk() {
         updatePlayButton();
         showPlayLoading(false);
         startHighlightLoop();
+
+        // Pré-carregar word positions da página do chunk atual (para highlight no PDF)
+        const chunk = currentChunks[currentChunkIndex];
+        if (chunk) loadPageWords(chunk.page);
 
         // Prefetch next
         const nx = currentChunkIndex+1;
@@ -503,6 +555,195 @@ function updateUI() {
 
 function fmt(s){return `${Math.floor(s/60)}:${Math.floor(s%60).toString().padStart(2,'0')}`;}
 function showToast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),3000);}
+
+// === SIDEBAR ===
+let tocData = [];
+let sidebarTab = 'toc';
+
+function toggleSidebar() {
+    document.getElementById('readerSidebar').classList.toggle('hidden');
+}
+
+function setSidebarTab(tab) {
+    sidebarTab = tab;
+    document.querySelectorAll('.sidebar-tab').forEach((t,i) => t.classList.toggle('active', (tab==='toc' && i===0) || (tab==='thumbs' && i===1)));
+    renderSidebar();
+}
+
+async function loadToc() {
+    if (!currentDoc) return;
+    try {
+        const r = await fetch(`/api/documents/${currentDoc.id}/toc`);
+        const d = await r.json();
+        tocData = d.toc || [];
+    } catch { tocData = []; }
+    renderSidebar();
+}
+
+function renderSidebar() {
+    const sc = document.getElementById('sidebarContent');
+    if (sidebarTab === 'toc') {
+        if (!tocData.length) {
+            sc.innerHTML = '<div style="padding:20px;text-align:center;font-size:12px;color:var(--mist)">Sem índice disponível</div>';
+            return;
+        }
+        sc.innerHTML = tocData.map((item, i) => `
+            <div class="toc-item ${item.level > 1 ? 'l2' : ''}" onclick="goToPage(${item.page})">
+                <span>${item.title}</span>
+                <span class="toc-page">${item.page}</span>
+            </div>
+        `).join('');
+    } else {
+        // Thumbnails
+        if (!currentDoc) return;
+        let html = '<div class="thumb-grid">';
+        for (let p = 1; p <= currentDoc.total_pages; p++) {
+            html += `<div class="thumb-item" onclick="goToPage(${p})"><img src="/api/documents/${currentDoc.id}/pages/${p}.png" loading="lazy" alt="p${p}"><div class="thumb-num">${p}</div></div>`;
+        }
+        html += '</div>';
+        sc.innerHTML = html;
+    }
+}
+
+function goToPage(page) {
+    const el = document.getElementById(`pdf-page-${page}`);
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+// === PDF WORD POSITIONS + HIGHLIGHT ===
+let pageWordPositions = {}; // cache { pageNum: [{word, x0, y0, x1, y1}] }
+let currentHighlightPage = 0;
+
+async function loadPageWords(pageNum) {
+    if (pageWordPositions[pageNum]) return pageWordPositions[pageNum];
+    try {
+        const r = await fetch(`/api/documents/${currentDoc.id}/pages/${pageNum}/words`);
+        const d = await r.json();
+        pageWordPositions[pageNum] = d.words || [];
+        return pageWordPositions[pageNum];
+    } catch { return []; }
+}
+
+function highlightWordOnPdf(word, pageNum) {
+    // Remover highlights anteriores
+    document.querySelectorAll('.pdf-highlight').forEach(h => h.remove());
+
+    const pageEl = document.getElementById(`pdf-page-${pageNum}`);
+    if (!pageEl) return;
+
+    const img = pageEl.querySelector('img');
+    if (!img || !img.complete) return;
+
+    const words = pageWordPositions[pageNum];
+    if (!words) return;
+
+    // Buscar a palavra (primeira ocorrência que ainda não foi marcada)
+    const cleanWord = word.toLowerCase().replace(/[.,;:!?"'()\[\]]/g, '');
+    for (const w of words) {
+        const cleanW = w.word.toLowerCase().replace(/[.,;:!?"'()\[\]]/g, '');
+        if (cleanW === cleanWord || cleanW.startsWith(cleanWord) || cleanWord.startsWith(cleanW)) {
+            const overlay = document.createElement('div');
+            overlay.className = 'pdf-highlight';
+            overlay.style.left = (w.x0 * 100) + '%';
+            overlay.style.top = (w.y0 * 100) + '%';
+            overlay.style.width = ((w.x1 - w.x0) * 100) + '%';
+            overlay.style.height = ((w.y1 - w.y0) * 100) + '%';
+            pageEl.appendChild(overlay);
+
+            // Auto-scroll no PDF view
+            if (currentView === 'pdf') {
+                const pv = document.getElementById('pdfView');
+                const rect = overlay.getBoundingClientRect();
+                const pvRect = pv.getBoundingClientRect();
+                if (rect.top < pvRect.top + 60 || rect.bottom > pvRect.bottom - 80) {
+                    pageEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+            }
+            return;
+        }
+    }
+}
+
+// Atualizar highlight no PDF durante leitura
+function updatePdfHighlight() {
+    if (!wordBoundaries.length || currentView !== 'pdf') return;
+    const ms = audio.currentTime * 1000;
+
+    let activeBIdx = -1;
+    for (let i = 0; i < wordBoundaries.length; i++) {
+        const b = wordBoundaries[i];
+        if (ms >= b.offset_ms && ms < b.offset_ms + b.duration_ms + 300) { activeBIdx = i; break; }
+    }
+
+    if (activeBIdx >= 0) {
+        const chunk = currentChunks[currentChunkIndex];
+        if (chunk) {
+            highlightWordOnPdf(wordBoundaries[activeBIdx].text, chunk.page);
+        }
+    }
+}
+
+// === CLICK-TO-READ NO PDF ===
+function setupPdfClickToRead(pageNum) {
+    const pageEl = document.getElementById(`pdf-page-${pageNum}`);
+    if (!pageEl || pageEl.dataset.clickSetup) return;
+    pageEl.dataset.clickSetup = 'true';
+
+    pageEl.addEventListener('click', async (e) => {
+        const img = pageEl.querySelector('img');
+        if (!img) return;
+
+        const rect = img.getBoundingClientRect();
+        const relX = (e.clientX - rect.left) / rect.width;
+        const relY = (e.clientY - rect.top) / rect.height;
+
+        // Encontrar a palavra mais próxima do clique
+        const words = await loadPageWords(pageNum);
+        let closestWord = null;
+        let closestDist = Infinity;
+
+        for (const w of words) {
+            if (relY >= w.y0 - 0.01 && relY <= w.y1 + 0.01 && relX >= w.x0 - 0.02 && relX <= w.x1 + 0.02) {
+                const dist = Math.abs(relX - (w.x0 + w.x1) / 2) + Math.abs(relY - (w.y0 + w.y1) / 2);
+                if (dist < closestDist) { closestDist = dist; closestWord = w; }
+            }
+        }
+
+        if (closestWord) {
+            // Encontrar o chunk que contém esta página
+            const chunkIdx = currentChunks.findIndex(c => c.page === pageNum);
+            if (chunkIdx >= 0 && chunkIdx !== currentChunkIndex) {
+                currentChunkIndex = chunkIdx;
+                updateUI();
+            }
+
+            // Encontrar o boundary mais próximo desta palavra
+            if (wordBoundaries.length) {
+                const cleanClick = closestWord.word.toLowerCase().replace(/[.,;:!?"'()\[\]]/g, '');
+                for (let bi = 0; bi < wordBoundaries.length; bi++) {
+                    const cleanB = wordBoundaries[bi].text.toLowerCase().replace(/[.,;:!?"'()\[\]]/g, '');
+                    if (cleanB === cleanClick || cleanB.startsWith(cleanClick) || cleanClick.startsWith(cleanB)) {
+                        audio.currentTime = wordBoundaries[bi].offset_ms / 1000;
+                        if (!isPlaying) { audio.play(); isPlaying = true; updatePlayButton(); startHighlightLoop(); }
+                        return;
+                    }
+                }
+            }
+
+            // Se não tem boundaries carregados, iniciar leitura do chunk
+            if (!isPlaying) {
+                await playCurrentChunk();
+            }
+        }
+    });
+}
+
+// Override do updateHighlight original para incluir PDF highlight
+const _origUpdateHighlight = updateHighlight;
+updateHighlight = function() {
+    _origUpdateHighlight();
+    updatePdfHighlight();
+};
 </script>
 </body>
 </html>
