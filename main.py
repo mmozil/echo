@@ -7,12 +7,14 @@ import os
 import shutil
 from pathlib import Path
 
-from fastapi import FastAPI, UploadFile, File, HTTPException, Query
-from fastapi.responses import FileResponse, StreamingResponse, HTMLResponse
+from fastapi import FastAPI, UploadFile, File, HTTPException, Query, Request, Response, Cookie
+from fastapi.responses import FileResponse, StreamingResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 
 from src.database import init_db, create_document, list_documents, get_document, delete_document
 from src.database import save_chunk, get_chunks, get_chunk, update_chunk_audio, update_progress, get_progress
+from src.database import create_user, authenticate_user, create_session, get_user_by_session, delete_session
 from src.pdf_parser import extract_text_from_pdf, chunk_pages, get_pdf_info
 from src.tts_service import generate_audio, generate_audio_stream, list_voices
 
@@ -32,11 +34,38 @@ async def startup():
     init_db()
 
 
-# --- Página principal ---
+# --- Helpers ---
+
+def get_current_user(request: Request) -> dict | None:
+    token = request.cookies.get("echo_session")
+    if not token:
+        return None
+    return get_user_by_session(token)
+
+
+def require_auth(request: Request) -> dict:
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(401, "Não autenticado")
+    return user
+
+
+# --- Páginas ---
 
 @app.get("/", response_class=HTMLResponse)
-async def index():
+async def index(request: Request):
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=302)
     return FileResponse("static/index.html")
+
+
+@app.get("/login", response_class=HTMLResponse)
+async def login_page(request: Request):
+    user = get_current_user(request)
+    if user:
+        return RedirectResponse("/", status_code=302)
+    return FileResponse("static/login.html")
 
 
 # --- Health ---
@@ -44,6 +73,63 @@ async def index():
 @app.get("/api/health")
 async def health():
     return {"status": "ok", "service": "echo", "voice": os.environ.get("TTS_VOICE", "pt-BR-AntonioNeural")}
+
+
+# --- Auth ---
+
+class RegisterRequest(BaseModel):
+    name: str
+    email: str
+    password: str
+
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+@app.post("/api/auth/register")
+async def register(body: RegisterRequest, response: Response):
+    if len(body.password) < 6:
+        raise HTTPException(400, "Senha deve ter pelo menos 6 caracteres")
+    if not body.name.strip():
+        raise HTTPException(400, "Nome é obrigatório")
+
+    user_id = create_user(body.name.strip(), body.email, body.password)
+    if not user_id:
+        raise HTTPException(409, "Email já cadastrado")
+
+    token = create_session(user_id)
+    response.set_cookie("echo_session", token, httponly=True, samesite="lax", max_age=30 * 24 * 3600)
+    return {"ok": True, "name": body.name.strip()}
+
+
+@app.post("/api/auth/login")
+async def login(body: LoginRequest, response: Response):
+    user = authenticate_user(body.email, body.password)
+    if not user:
+        raise HTTPException(401, "Email ou senha incorretos")
+
+    token = create_session(user["id"])
+    response.set_cookie("echo_session", token, httponly=True, samesite="lax", max_age=30 * 24 * 3600)
+    return {"ok": True, "name": user["name"]}
+
+
+@app.get("/api/auth/me")
+async def me(request: Request):
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(401, "Não autenticado")
+    return {"id": user["id"], "name": user["name"], "email": user["email"]}
+
+
+@app.post("/api/auth/logout")
+async def logout(request: Request, response: Response):
+    token = request.cookies.get("echo_session")
+    if token:
+        delete_session(token)
+    response.delete_cookie("echo_session")
+    return {"ok": True}
 
 
 # --- Upload PDF ---

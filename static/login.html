@@ -1,0 +1,759 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Echo — Entrar</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&display=swap" rel="stylesheet">
+    <style>
+        @font-face { font-family: "SF Pro Display"; src: url("/static/fonts/SF-Pro-Display-Regular.otf") format("opentype"); font-weight: 400; font-style: normal; font-display: swap; }
+        @font-face { font-family: "SF Pro Display"; src: url("/static/fonts/SF-Pro-Display-Medium.otf") format("opentype"); font-weight: 500; font-style: normal; font-display: swap; }
+        @font-face { font-family: "SF Pro Display"; src: url("/static/fonts/SF-Pro-Display-Semibold.otf") format("opentype"); font-weight: 600; font-style: normal; font-display: swap; }
+        @font-face { font-family: "SF Pro Display"; src: url("/static/fonts/SF-Pro-Display-Bold.otf") format("opentype"); font-weight: 700; font-style: normal; font-display: swap; }
+        @font-face { font-family: "SF Pro Text"; src: url("/static/fonts/SF-Pro-Text-Regular.otf") format("opentype"); font-weight: 400; font-style: normal; font-display: swap; }
+        @font-face { font-family: "SF Pro Text"; src: url("/static/fonts/SF-Pro-Text-Medium.otf") format("opentype"); font-weight: 500; font-style: normal; font-display: swap; }
+        @font-face { font-family: "SF Pro Text"; src: url("/static/fonts/SF-Pro-Text-Semibold.otf") format("opentype"); font-weight: 600; font-style: normal; font-display: swap; }
+
+        :root {
+            --ink: #1A1A1A;
+            --charcoal: #2D2D2D;
+            --slate: #64748B;
+            --mist: #94A3B8;
+            --cloud: #F1F5F9;
+            --snow: #FAFBFC;
+            --white: #FFFFFF;
+            --amber: #E67E22;
+            --amber-dark: #D35400;
+            --amber-light: #FEF3E2;
+            --teal: #0D9488;
+            --teal-light: #ECFDF5;
+            --danger: #DC2626;
+            --danger-light: #FEF2F2;
+            --radius: 12px;
+            --radius-sm: 8px;
+            --shadow: 0 1px 3px rgba(0,0,0,0.06);
+            --shadow-lg: 0 8px 32px rgba(0,0,0,0.08);
+            --font-display: "Fraunces", Georgia, serif;
+            --font-body: "SF Pro Text", "SF Pro Display", -apple-system, BlinkMacSystemFont, sans-serif;
+            --font-mono: "JetBrains Mono", "SF Mono", monospace;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: var(--font-body);
+            background: var(--snow);
+            color: var(--ink);
+            min-height: 100vh;
+            display: flex;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        /* --- Layout split --- */
+        .login-layout {
+            display: flex;
+            min-height: 100vh;
+            width: 100%;
+        }
+
+        /* --- Left: Brand panel --- */
+        .brand-panel {
+            flex: 0 0 45%;
+            background: var(--ink);
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 48px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .brand-panel::after {
+            content: '';
+            position: absolute;
+            top: -20%;
+            right: -30%;
+            width: 80%;
+            height: 140%;
+            background: radial-gradient(ellipse at center, rgba(230,126,34,0.08) 0%, transparent 70%);
+            pointer-events: none;
+        }
+
+        .brand-logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            z-index: 1;
+        }
+
+        .brand-logo-icon {
+            width: 40px;
+            height: 40px;
+            position: relative;
+        }
+
+        .brand-logo-icon .wave {
+            position: absolute;
+            border: 2px solid var(--amber);
+            border-radius: 50%;
+            opacity: 0.3;
+        }
+
+        .brand-logo-icon .wave:nth-child(1) {
+            width: 16px; height: 16px;
+            top: 12px; left: 12px;
+            opacity: 0.9;
+            background: var(--amber);
+        }
+
+        .brand-logo-icon .wave:nth-child(2) {
+            width: 26px; height: 26px;
+            top: 7px; left: 7px;
+            opacity: 0.5;
+        }
+
+        .brand-logo-icon .wave:nth-child(3) {
+            width: 36px; height: 36px;
+            top: 2px; left: 2px;
+            opacity: 0.25;
+        }
+
+        .brand-logo-text {
+            font-family: var(--font-display);
+            font-size: 28px;
+            font-weight: 700;
+            color: var(--white);
+            letter-spacing: -0.5px;
+        }
+
+        .brand-logo-text span {
+            color: var(--amber);
+        }
+
+        .brand-content {
+            z-index: 1;
+            max-width: 380px;
+        }
+
+        .brand-tagline {
+            font-family: var(--font-display);
+            font-size: 36px;
+            font-weight: 600;
+            color: var(--white);
+            line-height: 1.2;
+            letter-spacing: -0.5px;
+            margin-bottom: 20px;
+        }
+
+        .brand-tagline em {
+            color: var(--amber);
+            font-style: normal;
+        }
+
+        .brand-description {
+            font-size: 15px;
+            color: var(--mist);
+            line-height: 1.7;
+            margin-bottom: 32px;
+        }
+
+        .brand-features {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .brand-feature {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+        }
+
+        .brand-feature-icon {
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
+            background: rgba(230,126,34,0.12);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            margin-top: 1px;
+        }
+
+        .brand-feature-icon svg {
+            width: 16px;
+            height: 16px;
+            color: var(--amber);
+        }
+
+        .brand-feature-text {
+            font-size: 14px;
+            color: rgba(255,255,255,0.7);
+            line-height: 1.5;
+        }
+
+        .brand-feature-text strong {
+            color: var(--white);
+            font-weight: 500;
+        }
+
+        .brand-footer {
+            z-index: 1;
+            font-size: 12px;
+            color: var(--slate);
+        }
+
+        /* --- Right: Form panel --- */
+        .form-panel {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 48px;
+        }
+
+        .form-container {
+            width: 100%;
+            max-width: 400px;
+        }
+
+        .form-header {
+            margin-bottom: 36px;
+        }
+
+        .form-title {
+            font-family: var(--font-display);
+            font-size: 28px;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+            margin-bottom: 8px;
+        }
+
+        .form-subtitle {
+            font-size: 14px;
+            color: var(--slate);
+            line-height: 1.5;
+        }
+
+        .form-subtitle a {
+            color: var(--amber);
+            text-decoration: none;
+            font-weight: 500;
+        }
+
+        .form-subtitle a:hover {
+            color: var(--amber-dark);
+            text-decoration: underline;
+        }
+
+        /* --- Tabs --- */
+        .form-tabs {
+            display: flex;
+            gap: 0;
+            margin-bottom: 32px;
+            border-bottom: 1px solid var(--cloud);
+        }
+
+        .form-tab {
+            flex: 1;
+            padding: 12px 0;
+            text-align: center;
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--mist);
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            transition: all 0.2s;
+            background: none;
+            border-top: none;
+            border-left: none;
+            border-right: none;
+            font-family: var(--font-body);
+        }
+
+        .form-tab:hover {
+            color: var(--slate);
+        }
+
+        .form-tab.active {
+            color: var(--ink);
+            border-bottom-color: var(--amber);
+        }
+
+        /* --- Inputs --- */
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-label {
+            display: block;
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--charcoal);
+            margin-bottom: 6px;
+        }
+
+        .form-input {
+            width: 100%;
+            height: 44px;
+            padding: 0 14px;
+            border: 1px solid #E2E8F0;
+            border-radius: var(--radius-sm);
+            font-size: 14px;
+            font-family: var(--font-body);
+            color: var(--ink);
+            background: var(--white);
+            transition: all 0.15s;
+            outline: none;
+        }
+
+        .form-input::placeholder {
+            color: var(--mist);
+        }
+
+        .form-input:focus {
+            border-color: var(--amber);
+            box-shadow: 0 0 0 3px rgba(230,126,34,0.1);
+        }
+
+        .form-input.error {
+            border-color: var(--danger);
+            box-shadow: 0 0 0 3px rgba(220,38,38,0.08);
+        }
+
+        .input-with-icon {
+            position: relative;
+        }
+
+        .input-with-icon .form-input {
+            padding-left: 40px;
+        }
+
+        .input-icon {
+            position: absolute;
+            left: 14px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--mist);
+            width: 16px;
+            height: 16px;
+        }
+
+        .password-toggle {
+            position: absolute;
+            right: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: none;
+            border: none;
+            cursor: pointer;
+            color: var(--mist);
+            padding: 4px;
+        }
+
+        .password-toggle:hover {
+            color: var(--slate);
+        }
+
+        /* --- Button --- */
+        .form-submit {
+            width: 100%;
+            height: 44px;
+            border: none;
+            border-radius: var(--radius-sm);
+            background: var(--amber);
+            color: var(--white);
+            font-size: 14px;
+            font-weight: 600;
+            font-family: var(--font-body);
+            cursor: pointer;
+            transition: all 0.15s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            margin-top: 8px;
+        }
+
+        .form-submit:hover {
+            background: var(--amber-dark);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(230,126,34,0.3);
+        }
+
+        .form-submit:active {
+            transform: translateY(0);
+        }
+
+        .form-submit:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .form-submit .spinner {
+            width: 16px;
+            height: 16px;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* --- Divider --- */
+        .form-divider {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            margin: 24px 0;
+        }
+
+        .form-divider::before,
+        .form-divider::after {
+            content: '';
+            flex: 1;
+            height: 1px;
+            background: var(--cloud);
+        }
+
+        .form-divider span {
+            font-size: 12px;
+            color: var(--mist);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        /* --- Error message --- */
+        .form-error {
+            background: var(--danger-light);
+            border: 1px solid #FECACA;
+            border-radius: var(--radius-sm);
+            padding: 10px 14px;
+            font-size: 13px;
+            color: var(--danger);
+            margin-bottom: 16px;
+            display: none;
+        }
+
+        .form-error.show {
+            display: block;
+        }
+
+        /* --- Form views --- */
+        .form-view {
+            display: none;
+        }
+
+        .form-view.active {
+            display: block;
+        }
+
+        /* --- Responsive --- */
+        @media (max-width: 900px) {
+            .brand-panel {
+                display: none;
+            }
+
+            .form-panel {
+                padding: 32px 24px;
+            }
+
+            .form-container {
+                max-width: 100%;
+            }
+
+            /* Mostrar logo mobile */
+            .mobile-logo {
+                display: flex !important;
+                align-items: center;
+                gap: 10px;
+                margin-bottom: 32px;
+            }
+
+            .mobile-logo-icon {
+                width: 36px;
+                height: 36px;
+                position: relative;
+            }
+
+            .mobile-logo-icon .wave {
+                position: absolute;
+                border: 2px solid var(--amber);
+                border-radius: 50%;
+            }
+
+            .mobile-logo-icon .wave:nth-child(1) {
+                width: 14px; height: 14px;
+                top: 11px; left: 11px;
+                opacity: 0.9;
+                background: var(--amber);
+            }
+
+            .mobile-logo-icon .wave:nth-child(2) {
+                width: 24px; height: 24px;
+                top: 6px; left: 6px;
+                opacity: 0.5;
+            }
+
+            .mobile-logo-icon .wave:nth-child(3) {
+                width: 32px; height: 32px;
+                top: 2px; left: 2px;
+                opacity: 0.25;
+            }
+
+            .mobile-logo-text {
+                font-family: var(--font-display);
+                font-size: 24px;
+                font-weight: 700;
+                color: var(--ink);
+            }
+
+            .mobile-logo-text span {
+                color: var(--amber);
+            }
+        }
+
+        @media (min-width: 901px) {
+            .mobile-logo { display: none !important; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="login-layout">
+    <!-- Left: Brand panel -->
+    <div class="brand-panel">
+        <div class="brand-logo">
+            <div class="brand-logo-icon">
+                <div class="wave"></div>
+                <div class="wave"></div>
+                <div class="wave"></div>
+            </div>
+            <div class="brand-logo-text">echo<span>.</span></div>
+        </div>
+
+        <div class="brand-content">
+            <h1 class="brand-tagline">Seus documentos<br>ganham <em>voz</em></h1>
+            <p class="brand-description">
+                Transforme qualquer PDF em audiobook com voz AI natural.
+                Leia mais, em menos tempo, sem esforço.
+            </p>
+
+            <div class="brand-features">
+                <div class="brand-feature">
+                    <div class="brand-feature-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>
+                    </div>
+                    <div class="brand-feature-text">
+                        <strong>Voz natural do Antonio</strong> — Microsoft Neural TTS, gratuito e sem limite
+                    </div>
+                </div>
+                <div class="brand-feature">
+                    <div class="brand-feature-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+                    </div>
+                    <div class="brand-feature-text">
+                        <strong>Upload qualquer PDF</strong> — livros, artigos, apostilas, relatórios
+                    </div>
+                </div>
+                <div class="brand-feature">
+                    <div class="brand-feature-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                    </div>
+                    <div class="brand-feature-text">
+                        <strong>Progresso salvo</strong> — continue de onde parou, velocidade ajustável
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="brand-footer">
+            hovio.com.br
+        </div>
+    </div>
+
+    <!-- Right: Form panel -->
+    <div class="form-panel">
+        <div class="form-container">
+            <!-- Mobile logo -->
+            <div class="mobile-logo">
+                <div class="mobile-logo-icon">
+                    <div class="wave"></div>
+                    <div class="wave"></div>
+                    <div class="wave"></div>
+                </div>
+                <div class="mobile-logo-text">echo<span>.</span></div>
+            </div>
+
+            <!-- Tabs -->
+            <div class="form-tabs">
+                <button class="form-tab active" onclick="switchTab('login')">Entrar</button>
+                <button class="form-tab" onclick="switchTab('register')">Criar conta</button>
+            </div>
+
+            <!-- Error -->
+            <div class="form-error" id="formError"></div>
+
+            <!-- Login form -->
+            <div class="form-view active" id="loginView">
+                <form onsubmit="handleLogin(event)">
+                    <div class="form-group">
+                        <label class="form-label">Email</label>
+                        <div class="input-with-icon">
+                            <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
+                            <input class="form-input" type="email" id="loginEmail" placeholder="seu@email.com" required autocomplete="email">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Senha</label>
+                        <div class="input-with-icon">
+                            <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                            <input class="form-input" type="password" id="loginPassword" placeholder="Sua senha" required autocomplete="current-password">
+                            <button type="button" class="password-toggle" onclick="togglePassword('loginPassword', this)">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                            </button>
+                        </div>
+                    </div>
+                    <button class="form-submit" type="submit" id="loginBtn">
+                        Entrar
+                    </button>
+                </form>
+            </div>
+
+            <!-- Register form -->
+            <div class="form-view" id="registerView">
+                <form onsubmit="handleRegister(event)">
+                    <div class="form-group">
+                        <label class="form-label">Nome</label>
+                        <div class="input-with-icon">
+                            <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                            <input class="form-input" type="text" id="registerName" placeholder="Seu nome" required autocomplete="name">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Email</label>
+                        <div class="input-with-icon">
+                            <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
+                            <input class="form-input" type="email" id="registerEmail" placeholder="seu@email.com" required autocomplete="email">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Senha</label>
+                        <div class="input-with-icon">
+                            <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                            <input class="form-input" type="password" id="registerPassword" placeholder="Min. 6 caracteres" required minlength="6" autocomplete="new-password">
+                            <button type="button" class="password-toggle" onclick="togglePassword('registerPassword', this)">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                            </button>
+                        </div>
+                    </div>
+                    <button class="form-submit" type="submit" id="registerBtn">
+                        Criar conta
+                    </button>
+                </form>
+            </div>
+
+            <div class="form-divider"><span>echo</span></div>
+
+            <p style="text-align:center; font-size:12px; color:var(--mist)">
+                Seus documentos ficam seguros e privados.
+            </p>
+        </div>
+    </div>
+</div>
+
+<script>
+function switchTab(tab) {
+    document.querySelectorAll('.form-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.form-view').forEach(v => v.classList.remove('active'));
+    document.getElementById('formError').classList.remove('show');
+
+    if (tab === 'login') {
+        document.querySelectorAll('.form-tab')[0].classList.add('active');
+        document.getElementById('loginView').classList.add('active');
+    } else {
+        document.querySelectorAll('.form-tab')[1].classList.add('active');
+        document.getElementById('registerView').classList.add('active');
+    }
+}
+
+function showError(msg) {
+    const el = document.getElementById('formError');
+    el.textContent = msg;
+    el.classList.add('show');
+}
+
+function setLoading(btn, loading) {
+    if (loading) {
+        btn.disabled = true;
+        btn.dataset.text = btn.textContent;
+        btn.innerHTML = '<div class="spinner"></div>';
+    } else {
+        btn.disabled = false;
+        btn.textContent = btn.dataset.text;
+    }
+}
+
+function togglePassword(inputId, btn) {
+    const input = document.getElementById(inputId);
+    input.type = input.type === 'password' ? 'text' : 'password';
+}
+
+async function handleLogin(e) {
+    e.preventDefault();
+    const btn = document.getElementById('loginBtn');
+    const email = document.getElementById('loginEmail').value;
+    const password = document.getElementById('loginPassword').value;
+
+    document.getElementById('formError').classList.remove('show');
+    setLoading(btn, true);
+
+    try {
+        const res = await fetch('/api/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Erro ao entrar');
+        window.location.href = '/';
+    } catch (err) {
+        showError(err.message);
+        setLoading(btn, false);
+    }
+}
+
+async function handleRegister(e) {
+    e.preventDefault();
+    const btn = document.getElementById('registerBtn');
+    const name = document.getElementById('registerName').value;
+    const email = document.getElementById('registerEmail').value;
+    const password = document.getElementById('registerPassword').value;
+
+    document.getElementById('formError').classList.remove('show');
+    setLoading(btn, true);
+
+    try {
+        const res = await fetch('/api/auth/register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, email, password }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Erro ao criar conta');
+        window.location.href = '/';
+    } catch (err) {
+        showError(err.message);
+        setLoading(btn, false);
+    }
+}
+</script>
+
+</body>
+</html>

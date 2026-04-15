@@ -3,6 +3,8 @@
 import sqlite3
 import os
 import uuid
+import hashlib
+import secrets
 from datetime import datetime
 
 DB_PATH = os.environ.get("DB_PATH", "/app/data/echo.db")
@@ -19,6 +21,21 @@ def get_db():
 def init_db():
     conn = get_db()
     conn.executescript("""
+        CREATE TABLE IF NOT EXISTS users (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            email TEXT UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL,
+            created_at TEXT DEFAULT (datetime('now'))
+        );
+
+        CREATE TABLE IF NOT EXISTS sessions (
+            token TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            created_at TEXT DEFAULT (datetime('now')),
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        );
+
         CREATE TABLE IF NOT EXISTS documents (
             id TEXT PRIMARY KEY,
             title TEXT NOT NULL,
@@ -56,11 +73,76 @@ def init_db():
     conn.close()
 
 
+# --- Auth ---
+
+def _hash_password(password: str) -> str:
+    salt = secrets.token_hex(16)
+    hashed = hashlib.sha256((salt + password).encode()).hexdigest()
+    return f"{salt}:{hashed}"
+
+
+def _verify_password(password: str, password_hash: str) -> bool:
+    salt, hashed = password_hash.split(":")
+    return hashlib.sha256((salt + password).encode()).hexdigest() == hashed
+
+
+def create_user(name: str, email: str, password: str) -> str | None:
+    user_id = str(uuid.uuid4())[:8]
+    conn = get_db()
+    try:
+        conn.execute(
+            "INSERT INTO users (id, name, email, password_hash) VALUES (?, ?, ?, ?)",
+            (user_id, name, email.lower().strip(), _hash_password(password)),
+        )
+        conn.commit()
+    except sqlite3.IntegrityError:
+        conn.close()
+        return None
+    conn.close()
+    return user_id
+
+
+def authenticate_user(email: str, password: str) -> dict | None:
+    conn = get_db()
+    row = conn.execute("SELECT * FROM users WHERE email = ?", (email.lower().strip(),)).fetchone()
+    conn.close()
+    if not row or not _verify_password(password, row["password_hash"]):
+        return None
+    return dict(row)
+
+
+def create_session(user_id: str) -> str:
+    token = secrets.token_urlsafe(32)
+    conn = get_db()
+    conn.execute("INSERT INTO sessions (token, user_id) VALUES (?, ?)", (token, user_id))
+    conn.commit()
+    conn.close()
+    return token
+
+
+def get_user_by_session(token: str) -> dict | None:
+    conn = get_db()
+    row = conn.execute("""
+        SELECT u.id, u.name, u.email FROM users u
+        JOIN sessions s ON u.id = s.user_id
+        WHERE s.token = ?
+    """, (token,)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def delete_session(token: str):
+    conn = get_db()
+    conn.execute("DELETE FROM sessions WHERE token = ?", (token,))
+    conn.commit()
+    conn.close()
+
+
 # --- Documents ---
 
 def create_document(title: str, filename: str, total_pages: int, total_chunks: int, file_size: int) -> str:
     doc_id = str(uuid.uuid4())[:8]
-    colors = ["#003083", "#1a5276", "#6c3483", "#1e8449", "#b9770e", "#922b21", "#2e4053"]
+    colors = ["#E67E22", "#0D9488", "#2563EB", "#DC2626", "#059669", "#D97706", "#64748B"]
     color = colors[hash(title) % len(colors)]
     conn = get_db()
     conn.execute(
