@@ -115,9 +115,8 @@
         .pdf-page-num { text-align: center; font-size: 11px; color: var(--mist); padding: 6px 0 16px; }
 
         /* Highlight overlay no PDF */
-        .pdf-highlight { position: absolute; background: rgba(253,230,138,0.5); pointer-events: none; border-radius: 2px; transition: all 0.08s; }
-        .pdf-word-overlay { position: absolute; cursor: pointer; }
-        .pdf-word-overlay:hover { background: rgba(0,0,0,0.05); }
+        .pdf-highlight { position: absolute; background: rgba(253,230,138,0.55); pointer-events: none; border-radius: 2px; z-index: 2; }
+        .pdf-hover-line { position: absolute; left: 0; right: 0; background: rgba(253,230,138,0.15); pointer-events: none; z-index: 1; transition: all 0.1s; }
 
         /* Text view */
         .text-view { width: 100%; max-width: 680px; height: 100%; overflow-y: auto; padding: 32px 40px; scroll-behavior: smooth; }
@@ -128,30 +127,29 @@
         .text-view .word.active { background: var(--highlight); padding: 1px 2px; }
         .text-view .word.spoken { color: var(--ink); }
 
-        /* === PLAYER BAR (bottom) — compact single row === */
-        .player-bar { flex-shrink: 0; background: var(--white); border-top: 1px solid var(--border); }
-        .player-bar-progress { height: 3px; background: var(--cloud); cursor: pointer; position: relative; }
-        .player-bar-progress:hover { height: 5px; }
-        .pfill { height: 100%; background: var(--ink); border-radius: 0 2px 2px 0; transition: width 0.1s linear; }
-        .player-bar-row { display: flex; align-items: center; gap: 12px; padding: 8px 16px; }
-        .player-left { display: flex; align-items: center; gap: 4px; }
-        .player-center { display: flex; align-items: center; gap: 10px; flex: 1; justify-content: center; }
-        .player-right { display: flex; align-items: center; gap: 6px; }
+        /* === PLAYER BAR — Speechify style === */
+        .player-bar { flex-shrink: 0; background: var(--ink); color: white; }
+        .player-bar-progress { height: 2px; background: rgba(255,255,255,0.15); cursor: pointer; }
+        .player-bar-progress:hover { height: 4px; }
+        .pfill { height: 100%; background: white; transition: width 0.1s linear; }
+        .player-bar-row { display: flex; align-items: center; padding: 6px 16px; gap: 16px; }
 
-        .play-btn { width: 36px; height: 36px; border-radius: 50%; background: var(--ink); border: none; color: white; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.12s; }
-        .play-btn:hover { background: #000; transform: scale(1.05); }
-        .play-btn svg { width: 16px; height: 16px; }
-        .skip-b { width: 28px; height: 28px; border-radius: 50%; background: transparent; border: none; color: var(--slate); cursor: pointer; display: flex; align-items: center; justify-content: center; }
-        .skip-b:hover { color: var(--ink); }
+        .pb-left { display: flex; align-items: center; gap: 8px; min-width: 100px; }
+        .pb-center { display: flex; align-items: center; gap: 12px; flex: 1; justify-content: center; }
+        .pb-right { display: flex; align-items: center; gap: 8px; min-width: 100px; justify-content: flex-end; }
+
+        .play-btn { width: 40px; height: 40px; border-radius: 50%; background: white; border: none; color: var(--ink); cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.12s; }
+        .play-btn:hover { transform: scale(1.08); }
+        .play-btn svg { width: 18px; height: 18px; }
+        .skip-b { width: 28px; height: 28px; border-radius: 50%; background: transparent; border: none; color: rgba(255,255,255,0.6); cursor: pointer; display: flex; align-items: center; justify-content: center; }
+        .skip-b:hover { color: white; }
         .skip-b svg { width: 14px; height: 14px; }
 
-        .ptime { font-size: 10px; font-family: var(--font-m); color: var(--mist); min-width: 36px; }
-        .ptime.r { text-align: right; }
-        .chunk-label { font-size: 10px; color: var(--mist); white-space: nowrap; }
+        .ptime { font-size: 10px; font-family: var(--font-m); color: rgba(255,255,255,0.5); }
+        .chunk-label { font-size: 10px; color: rgba(255,255,255,0.4); white-space: nowrap; }
 
-        .spd-select { padding: 3px 6px; border-radius: 4px; font-size: 10px; font-weight: 500; border: 1px solid var(--border); background: var(--white); color: var(--slate); cursor: pointer; font-family: var(--font-m); appearance: none; -webkit-appearance: none; }
-
-        .voice-select { padding: 3px 8px; border-radius: 4px; font-size: 10px; border: 1px solid var(--border); background: var(--white); color: var(--slate); cursor: pointer; font-family: var(--font-b); max-width: 120px; appearance: none; -webkit-appearance: none; }
+        .pb-select { padding: 3px 8px; border-radius: 4px; font-size: 10px; font-weight: 500; border: 1px solid rgba(255,255,255,0.2); background: transparent; color: rgba(255,255,255,0.7); cursor: pointer; font-family: var(--font-b); }
+        .pb-select option { background: var(--ink); color: white; }
 
         .loading-spinner { width: 18px; height: 18px; border: 2px solid var(--border); border-top-color: var(--ink); border-radius: 50%; animation: spin 0.6s linear infinite; }
         @keyframes spin { to { transform: rotate(360deg); } }
@@ -243,29 +241,27 @@
     <div class="player-bar">
         <div class="player-bar-progress" id="pBar" onclick="seekAudio(event)"><div class="pfill" id="pFill" style="width:0%"></div></div>
         <div class="player-bar-row">
-            <div class="player-left">
+            <div class="pb-left">
                 <span class="ptime" id="curTime">0:00</span>
-                <span style="color:var(--border);font-size:10px">/</span>
-                <span class="ptime r" id="totTime">0:00</span>
+                <span class="chunk-label" id="chunkLabel"></span>
             </div>
-            <div class="player-center">
-                <button class="skip-b" onclick="prevChunk()"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg></button>
+            <div class="pb-center">
+                <button class="skip-b" onclick="prevChunk()" title="Anterior"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg></button>
                 <button class="play-btn" id="playBtn" onclick="togglePlay()">
                     <svg id="playIcon" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 18 12 6 20 6 4"/></svg>
                     <svg id="pauseIcon" viewBox="0 0 24 24" fill="currentColor" style="display:none"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
                 </button>
-                <button class="skip-b" onclick="nextChunk()"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 6h2v12h-2zm-10 0l8.5 6L6 18z"/></svg></button>
+                <button class="skip-b" onclick="nextChunk()" title="Próximo"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 6h2v12h-2zm-10 0l8.5 6L6 18z"/></svg></button>
             </div>
-            <div class="player-right">
-                <span class="chunk-label" id="chunkLabel">1/1</span>
-                <select class="spd-select" onchange="setSpeed(parseFloat(this.value))" title="Velocidade">
+            <div class="pb-right">
+                <select class="pb-select" onchange="setSpeed(parseFloat(this.value))" title="Velocidade">
                     <option value="0.75">0.75x</option>
                     <option value="1" selected>1x</option>
                     <option value="1.25">1.25x</option>
                     <option value="1.5">1.5x</option>
                     <option value="2">2x</option>
                 </select>
-                <select class="voice-select" id="voiceSelect" onchange="changeVoice(this.value)" title="Voz">
+                <select class="pb-select" id="voiceSelect" onchange="changeVoice(this.value)" title="Voz">
                     <option value="pt-BR-AntonioNeural">Antonio</option>
                 </select>
             </div>
@@ -282,6 +278,7 @@ let isPlaying = false, currentSpeed = 1;
 let wordBoundaries = [], boundaryToWordMap = [];
 let highlightInterval = null, currentView = 'pdf';
 let prefetchCache = {};
+let userScrolling = false, userScrollTimer = null;
 const audio = document.getElementById('audioPlayer');
 
 loadUser(); loadDocuments(); setupDragDrop();
@@ -353,9 +350,12 @@ async function openDocument(docId) {
     loadPdfPages();
     await loadChunkText(currentChunkIndex);
 
-    // Pré-gerar áudio
-    fetch(`/api/documents/${currentDoc.id}/chunks/${currentChunkIndex}/audio`,{method:'POST'})
-        .then(r=>r.json()).then(d=>{ if(d.audio_url) prefetchCache[currentChunkIndex]=d; }).catch(()=>{});
+    // Detectar scroll manual (para não travar tela durante playback)
+    const pv = document.getElementById('pdfView');
+    pv.onwheel = pv.ontouchmove = () => { userScrolling = true; clearTimeout(userScrollTimer); userScrollTimer = setTimeout(() => { userScrolling = false; }, 4000); };
+
+    // Pré-gerar áudio dos primeiros 3 chunks
+    prefetchChunks(currentChunkIndex, 3);
 }
 
 function closeReader() {
@@ -493,8 +493,8 @@ function updateHighlight() {
     const lsi = abi>0 ? boundaryToWordMap[abi-1] : -1;
     words.forEach((w,i) => { w.classList.toggle('active',i===awi); w.classList.toggle('spoken',i<=lsi&&i!==awi); });
 
-    // Auto-scroll text view
-    if (awi>=0 && words[awi] && currentView==='text') {
+    // Auto-scroll text view (só se user não está scrollando)
+    if (awi>=0 && words[awi] && currentView==='text' && !userScrolling) {
         const tv = document.getElementById('textView');
         const wt = words[awi].offsetTop - tv.offsetTop;
         const ts = tv.scrollTop, th = tv.clientHeight;
@@ -656,8 +656,8 @@ function highlightWordOnPdf(word, pageNum) {
             overlay.style.height = ((w.y1 - w.y0) * 100) + '%';
             pageEl.appendChild(overlay);
 
-            // Auto-scroll no PDF view
-            if (currentView === 'pdf') {
+            // Auto-scroll no PDF view (só se user não está scrollando manualmente)
+            if (currentView === 'pdf' && !userScrolling) {
                 const pv = document.getElementById('pdfView');
                 const rect = overlay.getBoundingClientRect();
                 const pvRect = pv.getBoundingClientRect();
@@ -697,6 +697,49 @@ function setupPdfClickToRead(pageNum) {
     const pageEl = document.getElementById(`pdf-page-${pageNum}`);
     if (!pageEl || pageEl.dataset.clickSetup) return;
     pageEl.dataset.clickSetup = 'true';
+
+    // Hover: mostrar highlight na linha sob o cursor
+    pageEl.addEventListener('mousemove', async (e) => {
+        const img = pageEl.querySelector('img');
+        if (!img) return;
+        const rect = img.getBoundingClientRect();
+        const relY = (e.clientY - rect.top) / rect.height;
+
+        // Remover hover anterior
+        pageEl.querySelectorAll('.pdf-hover-line').forEach(h => h.remove());
+
+        const words = await loadPageWords(pageNum);
+        if (!words.length) return;
+
+        // Encontrar a linha mais próxima do cursor
+        let closestLine = null;
+        let closestDist = Infinity;
+        for (const w of words) {
+            const midY = (w.y0 + w.y1) / 2;
+            const dist = Math.abs(relY - midY);
+            if (dist < closestDist) { closestDist = dist; closestLine = w; }
+        }
+
+        if (closestLine && closestDist < 0.03) {
+            // Encontrar todas as palavras da mesma linha
+            const lineWords = words.filter(w => Math.abs(w.y0 - closestLine.y0) < 0.005);
+            if (lineWords.length) {
+                const minX = Math.min(...lineWords.map(w => w.x0));
+                const maxX = Math.max(...lineWords.map(w => w.x1));
+                const hl = document.createElement('div');
+                hl.className = 'pdf-hover-line';
+                hl.style.left = (minX * 100) + '%';
+                hl.style.top = (closestLine.y0 * 100) + '%';
+                hl.style.width = ((maxX - minX) * 100) + '%';
+                hl.style.height = ((closestLine.y1 - closestLine.y0) * 100) + '%';
+                pageEl.appendChild(hl);
+            }
+        }
+    });
+
+    pageEl.addEventListener('mouseleave', () => {
+        pageEl.querySelectorAll('.pdf-hover-line').forEach(h => h.remove());
+    });
 
     pageEl.addEventListener('click', async (e) => {
         const img = pageEl.querySelector('img');
