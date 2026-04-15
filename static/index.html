@@ -560,7 +560,7 @@ async function deleteDoc(id,title) { if(!confirm(`Remover "${title}"?`)) return;
 async function openDocument(docId) {
     const r = await fetch(`/api/documents/${docId}`); const d = await r.json();
     currentDoc = d.document; currentChunks = d.chunks; currentChunkIndex = d.progress?.current_chunk||0;
-    prefetchCache = {}; renderedPages = {}; pageWordPositions = {};
+    prefetchCache = {}; renderedPages = {}; pageWordPositions = {}; chunkTextCache = {};
 
     document.getElementById('readerTitle').textContent = currentDoc.title;
     document.getElementById('totalPages').textContent = currentDoc.total_pages;
@@ -1197,7 +1197,9 @@ function updatePdfHighlight() {
 
 // === CLICK-TO-READ NO PDF ===
 
-// Encontra o chunk mais proximo de uma pagina (nao exige match exato)
+const clean = (s) => s.toLowerCase().replace(/[.,;:!?"'()\[\]\-]/g, '').trim();
+
+// Encontra o chunk mais proximo de uma pagina (fallback)
 function findChunkForPage(pageNum) {
     let best = -1;
     for (let i = 0; i < currentChunks.length; i++) {
@@ -1206,55 +1208,96 @@ function findChunkForPage(pageNum) {
     return best >= 0 ? best : 0;
 }
 
-// Encontra boundary por SEQUENCIA de palavras vizinhas (nao palavra isolada)
-// Pega 5 palavras ao redor do clique no PDF e busca essa sequencia nos boundaries
-function findBoundaryByContext(wordIdx, pageWords) {
-    if (!wordBoundaries.length || !pageWords.length) return -1;
+// Cache de texto completo dos chunks (para busca precisa)
+let chunkTextCache = {};
 
-    const clean = (s) => s.toLowerCase().replace(/[.,;:!?"'()\[\]\-]/g, '').trim();
+async function getChunkFullText(chunkIdx) {
+    if (chunkTextCache[chunkIdx]) return chunkTextCache[chunkIdx];
+    try {
+        const r = await fetch(`/api/documents/${currentDoc.id}/chunks/${chunkIdx}/text`);
+        const d = await r.json();
+        chunkTextCache[chunkIdx] = d.text;
+        return d.text;
+    } catch { return ''; }
+}
 
-    // Pegar 5 palavras a partir do ponto clicado
-    const contextSize = 5;
-    const start = Math.max(0, wordIdx);
-    const end = Math.min(pageWords.length, start + contextSize);
-    const clickContext = [];
-    for (let i = start; i < end; i++) {
-        const c = clean(pageWords[i].word);
-        if (c) clickContext.push(c);
+// Busca o texto clicado em TODOS os chunks da pagina para encontrar o chunk correto
+async function findChunkAndPositionForClick(pageNum, clickedWords) {
+    // Montar frase de busca com as palavras ao redor do clique
+    const searchPhrase = clickedWords.map(w => clean(w)).filter(w => w.length > 1).join(' ');
+    if (!searchPhrase) return { chunkIdx: findChunkForPage(pageNum), charPos: 0 };
+
+    // Pegar TODOS os chunks que podem estar nesta pagina
+    // (chunks cuja pagina e esta, ou pagina anterior se o chunk se estende)
+    const candidates = [];
+    for (let i = 0; i < currentChunks.length; i++) {
+        const cp = currentChunks[i].page;
+        // Chunk esta nesta pagina, ou na pagina anterior (pode se estender), ou na proxima
+        if (cp >= pageNum - 1 && cp <= pageNum + 1) candidates.push(i);
+    }
+    if (!candidates.length) return { chunkIdx: findChunkForPage(pageNum), charPos: 0 };
+
+    // Buscar a frase em cada chunk candidato
+    for (const ci of candidates) {
+        const text = await getChunkFullText(ci);
+        const textClean = text.toLowerCase().replace(/[.,;:!?"'()\[\]\-]/g, '');
+
+        // Tentar match com frase completa
+        let pos = textClean.indexOf(searchPhrase);
+        if (pos >= 0) return { chunkIdx: ci, charPos: pos };
+
+        // Tentar com menos palavras (3 primeiras)
+        const shorter = clickedWords.slice(0, 3).map(w => clean(w)).filter(w => w.length > 1).join(' ');
+        pos = textClean.indexOf(shorter);
+        if (pos >= 0) return { chunkIdx: ci, charPos: pos };
     }
 
-    if (clickContext.length < 2) {
-        // Fallback: posicao proporcional
-        const ratio = pageWords.length > 0 ? wordIdx / pageWords.length : 0;
-        return Math.min(Math.floor(ratio * wordBoundaries.length), wordBoundaries.length - 1);
-    }
+    // Fallback
+    return { chunkIdx: findChunkForPage(pageNum), charPos: 0 };
+}
 
-    // Buscar essa sequencia nos boundaries (sliding window)
-    let bestScore = 0, bestIdx = -1;
+// Encontra boundary por posicao do char no texto do chunk
+function findBoundaryByCharPos(charPos, chunkText) {
+    if (!wordBoundaries.length || charPos <= 0) return 0;
+
+    // Contar quantas palavras existem antes de charPos no texto
+    const textBefore = chunkText.substring(0, charPos);
+    const wordsBefore = textBefore.split(/\s+/).filter(w => w.trim()).length;
+
+    // Mapear para boundary index (boundaries sao ~1 por palavra)
+    const targetBIdx = Math.min(wordsBefore, wordBoundaries.length - 1);
+
+    // Refinar: buscar a palavra exata no contexto
+    return Math.max(0, targetBIdx);
+}
+
+// Encontra boundary por sequencia de palavras (sliding window nos boundaries)
+function findBoundaryByWordSequence(clickedWords) {
+    if (!wordBoundaries.length) return 0;
+
+    const context = clickedWords.map(w => clean(w)).filter(w => w.length > 1).slice(0, 6);
+    if (context.length < 2) return 0;
+
+    let bestScore = 0, bestIdx = 0;
     for (let bi = 0; bi < wordBoundaries.length; bi++) {
         let score = 0;
-        for (let ci = 0; ci < clickContext.length && bi + ci < wordBoundaries.length; ci++) {
+        for (let ci = 0; ci < context.length && bi + ci < wordBoundaries.length; ci++) {
             const bt = clean(wordBoundaries[bi + ci].text);
-            if (bt === clickContext[ci]) score += 2;
-            else if (bt.startsWith(clickContext[ci]) || clickContext[ci].startsWith(bt)) score += 1;
+            if (bt === context[ci]) score += 3;
+            else if (bt.startsWith(context[ci]) || context[ci].startsWith(bt)) score += 1;
         }
         if (score > bestScore) { bestScore = score; bestIdx = bi; }
     }
 
-    if (bestIdx >= 0 && bestScore >= 3) return bestIdx;
-
-    // Fallback: posicao proporcional
-    const ratio = pageWords.length > 0 ? wordIdx / pageWords.length : 0;
-    return Math.min(Math.floor(ratio * wordBoundaries.length), wordBoundaries.length - 1);
+    return bestIdx;
 }
 
 // Espera audio carregar metadados para poder fazer seek
 function waitForAudioReady() {
     return new Promise(resolve => {
-        if (audio.readyState >= 2) return resolve(); // HAVE_CURRENT_DATA
+        if (audio.readyState >= 2) return resolve();
         const onReady = () => { audio.removeEventListener('canplay', onReady); resolve(); };
         audio.addEventListener('canplay', onReady);
-        // Timeout safety
         setTimeout(resolve, 3000);
     });
 }
@@ -1329,14 +1372,18 @@ function setupPdfClickToRead(pageNum) {
 
         const wordIdx = words.indexOf(closestWord);
 
-        // Encontrar chunk correto para esta pagina
-        const chunkIdx = findChunkForPage(pageNum);
-        if (chunkIdx !== currentChunkIndex) { currentChunkIndex = chunkIdx; }
+        // Pegar 8 palavras a partir do clique para busca
+        const clickedWords = words.slice(wordIdx, Math.min(wordIdx + 8, words.length)).map(w => w.word);
 
         showPlayLoading(true);
         lastPdfHighlightIdx = -1;
 
         try {
+            // PASSO 1: Encontrar o chunk CORRETO buscando o texto clicado
+            const { chunkIdx, charPos } = await findChunkAndPositionForClick(pageNum, clickedWords);
+            currentChunkIndex = chunkIdx;
+
+            // PASSO 2: Gerar/obter audio do chunk correto
             let data;
             if (prefetchCache[currentChunkIndex]) { data = prefetchCache[currentChunkIndex]; delete prefetchCache[currentChunkIndex]; }
             else { const r = await fetch(`/api/documents/${currentDoc.id}/chunks/${currentChunkIndex}/audio`, {method:'POST'}); data = await r.json(); }
@@ -1346,19 +1393,31 @@ function setupPdfClickToRead(pageNum) {
             await new Promise(r => requestAnimationFrame(r));
             buildBoundaryMap();
 
-            // Calcular seek ANTES de setar src
-            let seekTimeMs = 0;
-            if (wordBoundaries.length > 0) {
-                const targetBIdx = findBoundaryByContext(wordIdx, words);
-                if (targetBIdx >= 0) {
-                    seekTimeMs = wordBoundaries[targetBIdx].offset_ms;
-                }
-            }
+            // PASSO 3: Encontrar posicao exata nos boundaries
+            // Usar DOIS metodos e pegar o melhor
+            let seekBIdx = 0;
 
+            // Metodo A: buscar sequencia de palavras nos boundaries
+            const bIdxByWords = findBoundaryByWordSequence(clickedWords);
+
+            // Metodo B: buscar por posicao do char no texto
+            const bIdxByChar = findBoundaryByCharPos(charPos, data.text || '');
+
+            // Escolher: se o metodo A achou match forte (>= 3 palavras), usar A
+            // Senao, usar B (baseado na posicao do char)
+            const contextCheck = clickedWords.slice(0, 3).map(w => clean(w));
+            let aScore = 0;
+            for (let ci = 0; ci < contextCheck.length && bIdxByWords + ci < wordBoundaries.length; ci++) {
+                if (clean(wordBoundaries[bIdxByWords + ci].text) === contextCheck[ci]) aScore++;
+            }
+            seekBIdx = aScore >= 2 ? bIdxByWords : bIdxByChar;
+
+            const seekTimeMs = wordBoundaries[seekBIdx]?.offset_ms || 0;
+
+            // PASSO 4: Carregar audio, esperar metadados, seek, play
             audio.src = data.audio_url;
             audio.playbackRate = currentSpeed;
 
-            // CRUCIAL: esperar audio carregar antes de fazer seek
             await waitForAudioReady();
 
             if (seekTimeMs > 0) {
