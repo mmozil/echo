@@ -910,10 +910,15 @@ async function loadChunkText(index) {
     } catch {}
 }
 
-function seekToWord(wi) {
+async function seekToWord(wi) {
     let best=-1, bestD=Infinity;
     for(let bi=0;bi<boundaryToWordMap.length;bi++){const d=Math.abs(boundaryToWordMap[bi]-wi);if(d<bestD){bestD=d;best=bi;}}
-    if(best>=0&&wordBoundaries[best]){ audio.currentTime=wordBoundaries[best].offset_ms/1000; if(!isPlaying){audio.play();isPlaying=true;updatePlayButton();startHighlightLoop();resetPlayerIdle();} }
+    if(best>=0&&wordBoundaries[best]){
+        // Esperar audio estar pronto se necessario
+        if (audio.readyState < 2 && audio.src) await waitForAudioReady();
+        audio.currentTime=wordBoundaries[best].offset_ms/1000;
+        if(!isPlaying){await audio.play();isPlaying=true;updatePlayButton();startHighlightLoop();resetPlayerIdle();}
+    }
 }
 
 audio.addEventListener('timeupdate', () => {
@@ -1198,43 +1203,60 @@ function findChunkForPage(pageNum) {
     for (let i = 0; i < currentChunks.length; i++) {
         if (currentChunks[i].page <= pageNum) best = i;
     }
-    // Se nenhum chunk <= pageNum, pega o primeiro
     return best >= 0 ? best : 0;
 }
 
-// Encontra o boundary mais proximo de uma palavra do PDF usando texto do chunk
-function findBoundaryForWord(clickedWord, wordIdx, pageWords, chunkText) {
-    if (!wordBoundaries.length) return -1;
+// Encontra boundary por SEQUENCIA de palavras vizinhas (nao palavra isolada)
+// Pega 5 palavras ao redor do clique no PDF e busca essa sequencia nos boundaries
+function findBoundaryByContext(wordIdx, pageWords) {
+    if (!wordBoundaries.length || !pageWords.length) return -1;
 
-    // Estrategia 1: match direto pela palavra clicada
-    const cleanClicked = clickedWord.toLowerCase().replace(/[.,;:!?"'()\[\]]/g, '');
+    const clean = (s) => s.toLowerCase().replace(/[.,;:!?"'()\[\]\-]/g, '').trim();
 
-    // Calcular posicao relativa da palavra na pagina
-    const relativePos = pageWords.length > 0 ? wordIdx / pageWords.length : 0;
-
-    // Encontrar todas as ocorrencias da palavra nos boundaries
-    const matches = [];
-    for (let i = 0; i < wordBoundaries.length; i++) {
-        const bt = wordBoundaries[i].text.toLowerCase().replace(/[.,;:!?"'()\[\]]/g, '');
-        if (bt === cleanClicked || bt.startsWith(cleanClicked) || cleanClicked.startsWith(bt)) {
-            matches.push(i);
-        }
+    // Pegar 5 palavras a partir do ponto clicado
+    const contextSize = 5;
+    const start = Math.max(0, wordIdx);
+    const end = Math.min(pageWords.length, start + contextSize);
+    const clickContext = [];
+    for (let i = start; i < end; i++) {
+        const c = clean(pageWords[i].word);
+        if (c) clickContext.push(c);
     }
 
-    // Se tem matches, pegar o mais proximo da posicao relativa
-    if (matches.length > 0) {
-        const targetBIdx = Math.floor(relativePos * wordBoundaries.length);
-        let bestMatch = matches[0], bestDist = Infinity;
-        for (const m of matches) {
-            const dist = Math.abs(m - targetBIdx);
-            if (dist < bestDist) { bestDist = dist; bestMatch = m; }
-        }
-        return bestMatch;
+    if (clickContext.length < 2) {
+        // Fallback: posicao proporcional
+        const ratio = pageWords.length > 0 ? wordIdx / pageWords.length : 0;
+        return Math.min(Math.floor(ratio * wordBoundaries.length), wordBoundaries.length - 1);
     }
 
-    // Fallback: usar posicao proporcional direta
-    const targetBIdx = Math.floor(relativePos * wordBoundaries.length);
-    return Math.min(targetBIdx, wordBoundaries.length - 1);
+    // Buscar essa sequencia nos boundaries (sliding window)
+    let bestScore = 0, bestIdx = -1;
+    for (let bi = 0; bi < wordBoundaries.length; bi++) {
+        let score = 0;
+        for (let ci = 0; ci < clickContext.length && bi + ci < wordBoundaries.length; ci++) {
+            const bt = clean(wordBoundaries[bi + ci].text);
+            if (bt === clickContext[ci]) score += 2;
+            else if (bt.startsWith(clickContext[ci]) || clickContext[ci].startsWith(bt)) score += 1;
+        }
+        if (score > bestScore) { bestScore = score; bestIdx = bi; }
+    }
+
+    if (bestIdx >= 0 && bestScore >= 3) return bestIdx;
+
+    // Fallback: posicao proporcional
+    const ratio = pageWords.length > 0 ? wordIdx / pageWords.length : 0;
+    return Math.min(Math.floor(ratio * wordBoundaries.length), wordBoundaries.length - 1);
+}
+
+// Espera audio carregar metadados para poder fazer seek
+function waitForAudioReady() {
+    return new Promise(resolve => {
+        if (audio.readyState >= 2) return resolve(); // HAVE_CURRENT_DATA
+        const onReady = () => { audio.removeEventListener('canplay', onReady); resolve(); };
+        audio.addEventListener('canplay', onReady);
+        // Timeout safety
+        setTimeout(resolve, 3000);
+    });
 }
 
 function setupPdfClickToRead(pageNum) {
@@ -1242,7 +1264,7 @@ function setupPdfClickToRead(pageNum) {
     if (!pageEl || pageEl.dataset.clickSetup) return;
     pageEl.dataset.clickSetup = 'true';
 
-    // Pre-load word positions eagerly (nao esperar mouseenter)
+    // Pre-load word positions eagerly
     loadPageWords(pageNum);
 
     pageEl.addEventListener('mousemove', async (e) => {
@@ -1305,11 +1327,15 @@ function setupPdfClickToRead(pageNum) {
 
         if (!closestWord) return;
 
+        const wordIdx = words.indexOf(closestWord);
+
         // Encontrar chunk correto para esta pagina
         const chunkIdx = findChunkForPage(pageNum);
         if (chunkIdx !== currentChunkIndex) { currentChunkIndex = chunkIdx; }
 
         showPlayLoading(true);
+        lastPdfHighlightIdx = -1;
+
         try {
             let data;
             if (prefetchCache[currentChunkIndex]) { data = prefetchCache[currentChunkIndex]; delete prefetchCache[currentChunkIndex]; }
@@ -1317,30 +1343,38 @@ function setupPdfClickToRead(pageNum) {
 
             wordBoundaries = data.boundaries || [];
             if (data.text) renderTextWithWords(data.text);
+            await new Promise(r => requestAnimationFrame(r));
             buildBoundaryMap();
+
+            // Calcular seek ANTES de setar src
+            let seekTimeMs = 0;
+            if (wordBoundaries.length > 0) {
+                const targetBIdx = findBoundaryByContext(wordIdx, words);
+                if (targetBIdx >= 0) {
+                    seekTimeMs = wordBoundaries[targetBIdx].offset_ms;
+                }
+            }
 
             audio.src = data.audio_url;
             audio.playbackRate = currentSpeed;
 
-            // Seek preciso: encontrar boundary pela palavra clicada
-            const wordIdx = words.indexOf(closestWord);
-            if (wordBoundaries.length > 0) {
-                const targetBIdx = findBoundaryForWord(closestWord.word, wordIdx, words, data.text || '');
-                if (targetBIdx >= 0) {
-                    audio.currentTime = wordBoundaries[targetBIdx].offset_ms / 1000;
-                }
+            // CRUCIAL: esperar audio carregar antes de fazer seek
+            await waitForAudioReady();
+
+            if (seekTimeMs > 0) {
+                audio.currentTime = seekTimeMs / 1000;
             }
-        } catch(e) { showPlayLoading(false); showToast(e.message); return; }
 
-        await audio.play();
-        isPlaying = true;
-        showPlayLoading(false);
-        updatePlayButton();
-        updateChapterDisplay();
-        startHighlightLoop();
-        resetPlayerIdle();
+            await audio.play();
+            isPlaying = true;
+            showPlayLoading(false);
+            updatePlayButton();
+            updateChapterDisplay();
+            startHighlightLoop();
+            resetPlayerIdle();
 
-        prefetchAhead(currentChunkIndex);
+            prefetchAhead(currentChunkIndex);
+        } catch(e) { showPlayLoading(false); showToast(e.message); }
     });
 }
 
