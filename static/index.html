@@ -349,7 +349,7 @@ async function openDocument(docId) {
     prefetchCache = {};
 
     document.getElementById('readerTitle').textContent = currentDoc.title;
-    document.getElementById('chunkLabel').textContent = `${currentChunkIndex+1} / ${currentChunks.length}`;
+    const cl=document.getElementById('chunkLabel'); if(cl) cl.textContent=`${currentChunkIndex+1} / ${currentChunks.length}`;
 
     document.getElementById('reader').classList.add('active');
     document.getElementById('libraryView').classList.add('hidden');
@@ -545,7 +545,7 @@ audio.addEventListener('timeupdate', () => {
     if(audio.duration && isFinite(audio.duration)){
         document.getElementById('pFill').style.width=(audio.currentTime/audio.duration*100)+'%';
         document.getElementById('curTime').textContent=fmt(audio.currentTime);
-        document.getElementById('totTime').textContent=fmt(audio.duration);
+        const tt=document.getElementById('totTime'); if(tt) tt.textContent=fmt(audio.duration);
     }
 });
 
@@ -781,7 +781,7 @@ function setupPdfClickToRead(pageNum) {
         // Mudar para o chunk correto se necessário
         if (chunkIdx !== currentChunkIndex) {
             currentChunkIndex = chunkIdx;
-            document.getElementById('chunkLabel').textContent = `${currentChunkIndex+1} / ${currentChunks.length}`;
+            const cl=document.getElementById('chunkLabel'); if(cl) cl.textContent=`${currentChunkIndex+1} / ${currentChunks.length}`;
         }
 
         // Gerar áudio + boundaries se não existem ainda (1 clique = play)
