@@ -15,7 +15,9 @@ from pydantic import BaseModel
 from src.database import init_db, create_document, list_documents, get_document, delete_document
 from src.database import save_chunk, get_chunks, get_chunk, update_chunk_audio, update_progress, get_progress
 from src.database import create_user, authenticate_user, create_session, get_user_by_session, delete_session
-from src.pdf_parser import extract_text_from_pdf, chunk_pages, get_pdf_info, extract_cover
+from src.pdf_parser import extract_text_from_pdf, chunk_pages, get_pdf_info, extract_cover, render_page
+
+PAGES_DIR = os.environ.get("PAGES_DIR", "/app/data/pages")
 
 COVERS_DIR = os.environ.get("COVERS_DIR", "/app/data/covers")
 from src.tts_service import generate_audio, generate_audio_stream, list_voices
@@ -34,6 +36,7 @@ async def startup():
     os.makedirs(UPLOAD_DIR, exist_ok=True)
     os.makedirs(AUDIO_DIR, exist_ok=True)
     os.makedirs(COVERS_DIR, exist_ok=True)
+    os.makedirs(PAGES_DIR, exist_ok=True)
     init_db()
 
 
@@ -99,6 +102,29 @@ async def serve_cover(doc_id: str):
     if not os.path.exists(filepath):
         raise HTTPException(404, "Capa não encontrada")
     return FileResponse(filepath, media_type="image/png")
+
+
+@app.get("/api/documents/{doc_id}/pages/{page_num}.png")
+async def serve_page(doc_id: str, page_num: int):
+    """Renderiza e serve uma página do PDF como PNG (com cache)."""
+    doc = get_document(doc_id)
+    if not doc:
+        raise HTTPException(404, "Documento não encontrado")
+
+    # Cache por doc_id + page
+    page_dir = os.path.join(PAGES_DIR, doc_id)
+    os.makedirs(page_dir, exist_ok=True)
+    page_path = os.path.join(page_dir, f"{page_num}.png")
+
+    if not os.path.exists(page_path):
+        pdf_path = os.path.join(UPLOAD_DIR, doc["filename"])
+        if not os.path.exists(pdf_path):
+            raise HTTPException(404, "PDF não encontrado")
+        ok = render_page(pdf_path, page_num, page_path)
+        if not ok:
+            raise HTTPException(404, "Página inválida")
+
+    return FileResponse(page_path, media_type="image/png")
 
 
 # --- Auth ---

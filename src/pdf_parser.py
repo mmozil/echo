@@ -87,7 +87,25 @@ def extract_cover(file_path: str, output_path: str, width: int = 400) -> bool:
             return False
 
         page = doc[0]
-        # Calcular zoom para a largura desejada
+        zoom = width / page.rect.width
+        mat = fitz.Matrix(zoom, zoom)
+        pix = page.get_pixmap(matrix=mat)
+        pix.save(output_path)
+        doc.close()
+        return True
+    except Exception:
+        return False
+
+
+def render_page(file_path: str, page_num: int, output_path: str, width: int = 800) -> bool:
+    """Renderiza uma página específica do PDF como imagem PNG."""
+    try:
+        doc = fitz.open(file_path)
+        if page_num < 1 or page_num > len(doc):
+            doc.close()
+            return False
+
+        page = doc[page_num - 1]
         zoom = width / page.rect.width
         mat = fitz.Matrix(zoom, zoom)
         pix = page.get_pixmap(matrix=mat)
