@@ -665,6 +665,8 @@ function highlightWordOnPdf(word, pageNum) {
 }
 
 // Atualizar highlight no PDF durante leitura
+let lastPdfHighlightIdx = -1;
+
 function updatePdfHighlight() {
     if (!wordBoundaries.length || currentView !== 'pdf') return;
     const ms = audio.currentTime * 1000;
@@ -675,7 +677,8 @@ function updatePdfHighlight() {
         if (ms >= b.offset_ms && ms < b.offset_ms + b.duration_ms + 300) { activeBIdx = i; break; }
     }
 
-    if (activeBIdx >= 0) {
+    if (activeBIdx >= 0 && activeBIdx !== lastPdfHighlightIdx) {
+        lastPdfHighlightIdx = activeBIdx;
         const chunk = currentChunks[currentChunkIndex];
         if (chunk) {
             highlightWordOnPdf(wordBoundaries[activeBIdx].text, chunk.page);
@@ -703,37 +706,72 @@ function setupPdfClickToRead(pageNum) {
         let closestDist = Infinity;
 
         for (const w of words) {
-            if (relY >= w.y0 - 0.01 && relY <= w.y1 + 0.01 && relX >= w.x0 - 0.02 && relX <= w.x1 + 0.02) {
+            if (relY >= w.y0 - 0.015 && relY <= w.y1 + 0.015 && relX >= w.x0 - 0.03 && relX <= w.x1 + 0.03) {
                 const dist = Math.abs(relX - (w.x0 + w.x1) / 2) + Math.abs(relY - (w.y0 + w.y1) / 2);
                 if (dist < closestDist) { closestDist = dist; closestWord = w; }
             }
         }
 
-        if (closestWord) {
-            // Encontrar o chunk que contém esta página
-            const chunkIdx = currentChunks.findIndex(c => c.page === pageNum);
-            if (chunkIdx >= 0 && chunkIdx !== currentChunkIndex) {
-                currentChunkIndex = chunkIdx;
-                updateUI();
-            }
+        if (!closestWord) return;
 
-            // Encontrar o boundary mais próximo desta palavra
-            if (wordBoundaries.length) {
-                const cleanClick = closestWord.word.toLowerCase().replace(/[.,;:!?"'()\[\]]/g, '');
-                for (let bi = 0; bi < wordBoundaries.length; bi++) {
-                    const cleanB = wordBoundaries[bi].text.toLowerCase().replace(/[.,;:!?"'()\[\]]/g, '');
-                    if (cleanB === cleanClick || cleanB.startsWith(cleanClick) || cleanClick.startsWith(cleanB)) {
-                        audio.currentTime = wordBoundaries[bi].offset_ms / 1000;
-                        if (!isPlaying) { audio.play(); isPlaying = true; updatePlayButton(); startHighlightLoop(); }
-                        return;
-                    }
+        // Encontrar o chunk que contém esta página
+        const chunkIdx = currentChunks.findIndex(c => c.page === pageNum);
+        if (chunkIdx < 0) return;
+
+        // Mudar para o chunk correto se necessário
+        if (chunkIdx !== currentChunkIndex) {
+            currentChunkIndex = chunkIdx;
+            document.getElementById('chunkLabel').textContent = `${currentChunkIndex+1} / ${currentChunks.length}`;
+        }
+
+        // Gerar áudio + boundaries se não existem ainda (1 clique = play)
+        if (!wordBoundaries.length || !isPlaying) {
+            showPlayLoading(true);
+            try {
+                let data;
+                if (prefetchCache[currentChunkIndex]) {
+                    data = prefetchCache[currentChunkIndex];
+                    delete prefetchCache[currentChunkIndex];
+                } else {
+                    const r = await fetch(`/api/documents/${currentDoc.id}/chunks/${currentChunkIndex}/audio`, {method:'POST'});
+                    data = await r.json();
                 }
-            }
 
-            // Se não tem boundaries carregados, iniciar leitura do chunk
-            if (!isPlaying) {
-                await playCurrentChunk();
+                const [_, bData] = await Promise.all([
+                    loadChunkText(currentChunkIndex),
+                    fetch(data.boundaries_url).then(r=>r.json()).catch(()=>[]),
+                ]);
+                wordBoundaries = bData;
+                buildBoundaryMap();
+
+                audio.src = data.audio_url;
+                audio.playbackRate = currentSpeed;
+            } catch(e) { showPlayLoading(false); showToast(e.message); return; }
+        }
+
+        // Buscar boundary da palavra clicada e posicionar áudio
+        const cleanClick = closestWord.word.toLowerCase().replace(/[.,;:!?"'()\[\]]/g, '');
+        let found = false;
+        for (let bi = 0; bi < wordBoundaries.length; bi++) {
+            const cleanB = wordBoundaries[bi].text.toLowerCase().replace(/[.,;:!?"'()\[\]]/g, '');
+            if (cleanB === cleanClick || cleanB.startsWith(cleanClick) || cleanClick.startsWith(cleanB)) {
+                audio.currentTime = wordBoundaries[bi].offset_ms / 1000;
+                found = true;
+                break;
             }
+        }
+
+        // Iniciar play
+        await audio.play();
+        isPlaying = true;
+        updatePlayButton();
+        showPlayLoading(false);
+        startHighlightLoop();
+
+        // Prefetch next
+        const nx = currentChunkIndex + 1;
+        if (nx < currentChunks.length && !prefetchCache[nx]) {
+            fetch(`/api/documents/${currentDoc.id}/chunks/${nx}/audio`, {method:'POST'}).then(r=>r.json()).then(d=>{if(d.audio_url) prefetchCache[nx]=d;}).catch(()=>{});
         }
     });
 }
