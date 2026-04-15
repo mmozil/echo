@@ -2,26 +2,26 @@
 
 import edge_tts
 import os
+import json
 import hashlib
 
 VOICE = os.environ.get("TTS_VOICE", "pt-BR-AntonioNeural")
 AUDIO_DIR = os.environ.get("AUDIO_DIR", "/app/data/audio")
-OUTPUT_FORMAT = "audio-24khz-48kbitrate-mono-mp3"
 
 
 async def generate_audio(text: str, chunk_id: str, rate: str = "+0%", pitch: str = "+0Hz") -> dict:
-    """Gera áudio MP3 a partir de texto usando Edge TTS.
+    """Gera áudio MP3 + word boundaries JSON.
 
-    Retorna {path: str, filename: str, cached: bool}
+    Retorna {path, filename, boundaries_file, cached}
     """
-    # Cache por hash do texto + configurações
     cache_key = hashlib.md5(f"{text}:{VOICE}:{rate}:{pitch}".encode()).hexdigest()[:12]
     filename = f"{chunk_id}_{cache_key}.mp3"
+    boundaries_filename = f"{chunk_id}_{cache_key}.json"
     filepath = os.path.join(AUDIO_DIR, filename)
+    boundaries_path = os.path.join(AUDIO_DIR, boundaries_filename)
 
-    # Se já existe, retorna cache
-    if os.path.exists(filepath):
-        return {"path": filepath, "filename": filename, "cached": True}
+    if os.path.exists(filepath) and os.path.exists(boundaries_path):
+        return {"path": filepath, "filename": filename, "boundaries_file": boundaries_filename, "cached": True}
 
     os.makedirs(AUDIO_DIR, exist_ok=True)
 
@@ -30,11 +30,34 @@ async def generate_audio(text: str, chunk_id: str, rate: str = "+0%", pitch: str
         voice=VOICE,
         rate=rate,
         pitch=pitch,
+        boundary="WordBoundary",
     )
 
-    await communicate.save(filepath)
+    # Stream para capturar áudio + word boundaries
+    boundaries = []
+    audio_data = b""
 
-    return {"path": filepath, "filename": filename, "cached": False}
+    async for message in communicate.stream():
+        if message["type"] == "audio":
+            audio_data += message["data"]
+        elif message["type"] == "WordBoundary":
+            boundaries.append({
+                "offset": message["offset"],           # microsegundos desde início
+                "duration": message["duration"],       # duração em microsegundos
+                "text": message["text"],               # palavra
+                "offset_ms": message["offset"] / 10000,  # converter para ms
+                "duration_ms": message["duration"] / 10000,
+            })
+
+    # Salvar áudio
+    with open(filepath, "wb") as f:
+        f.write(audio_data)
+
+    # Salvar word boundaries
+    with open(boundaries_path, "w", encoding="utf-8") as f:
+        json.dump(boundaries, f, ensure_ascii=False)
+
+    return {"path": filepath, "filename": filename, "boundaries_file": boundaries_filename, "cached": False}
 
 
 async def generate_audio_stream(text: str, rate: str = "+0%", pitch: str = "+0Hz"):

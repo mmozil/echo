@@ -287,6 +287,7 @@ async def generate_chunk_audio(
 
     return {
         "audio_url": f"/api/audio/{result['filename']}",
+        "boundaries_url": f"/api/audio/{result['boundaries_file']}",
         "cached": result["cached"],
         "chunk_index": chunk_index,
     }
@@ -318,8 +319,9 @@ async def stream_chunk_audio(
 async def serve_audio(filename: str):
     filepath = os.path.join(AUDIO_DIR, filename)
     if not os.path.exists(filepath):
-        raise HTTPException(404, "Áudio não encontrado")
-    return FileResponse(filepath, media_type="audio/mpeg")
+        raise HTTPException(404, "Arquivo não encontrado")
+    media = "application/json" if filename.endswith(".json") else "audio/mpeg"
+    return FileResponse(filepath, media_type=media)
 
 
 # --- Obter texto de um chunk (para highlight) ---

@@ -5,13 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Echo — Seus documentos ganham voz</title>
     <style>
-        @font-face { font-family: "SF Pro Display"; src: url("/static/fonts/SF-Pro-Display-Regular.otf") format("opentype"); font-weight: 400; font-style: normal; font-display: swap; }
-        @font-face { font-family: "SF Pro Display"; src: url("/static/fonts/SF-Pro-Display-Medium.otf") format("opentype"); font-weight: 500; font-style: normal; font-display: swap; }
-        @font-face { font-family: "SF Pro Display"; src: url("/static/fonts/SF-Pro-Display-Semibold.otf") format("opentype"); font-weight: 600; font-style: normal; font-display: swap; }
-        @font-face { font-family: "SF Pro Display"; src: url("/static/fonts/SF-Pro-Display-Bold.otf") format("opentype"); font-weight: 700; font-style: normal; font-display: swap; }
-        @font-face { font-family: "SF Pro Text"; src: url("/static/fonts/SF-Pro-Text-Regular.otf") format("opentype"); font-weight: 400; font-style: normal; font-display: swap; }
-        @font-face { font-family: "SF Pro Text"; src: url("/static/fonts/SF-Pro-Text-Medium.otf") format("opentype"); font-weight: 500; font-style: normal; font-display: swap; }
-        @font-face { font-family: "SF Pro Text"; src: url("/static/fonts/SF-Pro-Text-Semibold.otf") format("opentype"); font-weight: 600; font-style: normal; font-display: swap; }
+        @font-face { font-family: "SF Pro Display"; src: url("/static/fonts/SF-Pro-Display-Regular.otf") format("opentype"); font-weight: 400; font-display: swap; }
+        @font-face { font-family: "SF Pro Display"; src: url("/static/fonts/SF-Pro-Display-Medium.otf") format("opentype"); font-weight: 500; font-display: swap; }
+        @font-face { font-family: "SF Pro Display"; src: url("/static/fonts/SF-Pro-Display-Semibold.otf") format("opentype"); font-weight: 600; font-display: swap; }
+        @font-face { font-family: "SF Pro Display"; src: url("/static/fonts/SF-Pro-Display-Bold.otf") format("opentype"); font-weight: 700; font-display: swap; }
+        @font-face { font-family: "SF Pro Text"; src: url("/static/fonts/SF-Pro-Text-Regular.otf") format("opentype"); font-weight: 400; font-display: swap; }
+        @font-face { font-family: "SF Pro Text"; src: url("/static/fonts/SF-Pro-Text-Medium.otf") format("opentype"); font-weight: 500; font-display: swap; }
+        @font-face { font-family: "SF Pro Text"; src: url("/static/fonts/SF-Pro-Text-Semibold.otf") format("opentype"); font-weight: 600; font-display: swap; }
 
         :root {
             --ink: #1A1A1A;
@@ -22,11 +22,9 @@
             --snow: #FAFBFC;
             --white: #FFFFFF;
             --border: #E2E8F0;
-            --amber: #1A1A1A;
-            --amber-dark: #000000;
-            --amber-light: #F3F4F6;
-            --teal: #1A1A1A;
-            --teal-light: #F9FAFB;
+            --accent: #1A1A1A;
+            --accent-hover: #000000;
+            --accent-light: #F3F4F6;
             --danger: #DC2626;
             --radius: 12px;
             --radius-sm: 8px;
@@ -36,598 +34,136 @@
             --font-display: "SF Pro Display", -apple-system, BlinkMacSystemFont, sans-serif;
             --font-body: "SF Pro Text", "SF Pro Display", -apple-system, BlinkMacSystemFont, sans-serif;
             --font-mono: "JetBrains Mono", "SF Mono", monospace;
+            --highlight: #FDE68A;
         }
 
         * { margin: 0; padding: 0; box-sizing: border-box; }
-
-        body {
-            font-family: var(--font-body);
-            background: var(--snow);
-            color: var(--ink);
-            min-height: 100vh;
-            -webkit-font-smoothing: antialiased;
-        }
+        body { font-family: var(--font-body); background: var(--snow); color: var(--ink); min-height: 100vh; -webkit-font-smoothing: antialiased; }
 
         /* --- Header --- */
-        .header {
-            background: var(--white);
-            border-bottom: 1px solid var(--border);
-            padding: 14px 32px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            position: sticky;
-            top: 0;
-            z-index: 100;
-        }
+        .header { background: var(--white); border-bottom: 1px solid var(--border); padding: 14px 32px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 100; }
+        .logo { display: flex; align-items: center; gap: 10px; }
+        .logo-icon { width: 32px; height: 32px; position: relative; }
+        .logo-icon .wave { position: absolute; border: 2px solid var(--ink); border-radius: 50%; }
+        .logo-icon .wave:nth-child(1) { width: 12px; height: 12px; top: 10px; left: 10px; background: var(--ink); opacity: 0.9; }
+        .logo-icon .wave:nth-child(2) { width: 22px; height: 22px; top: 5px; left: 5px; opacity: 0.4; }
+        .logo-icon .wave:nth-child(3) { width: 30px; height: 30px; top: 1px; left: 1px; opacity: 0.2; }
+        .logo-text { font-family: var(--font-display); font-size: 22px; font-weight: 700; letter-spacing: -0.5px; }
+        .header-right { display: flex; align-items: center; gap: 12px; }
+        .user-name { font-size: 13px; color: var(--slate); }
 
-        .logo {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-
-        .logo-icon {
-            width: 32px;
-            height: 32px;
-            position: relative;
-        }
-
-        .logo-icon .wave {
-            position: absolute;
-            border: 2px solid var(--amber);
-            border-radius: 50%;
-        }
-
-        .logo-icon .wave:nth-child(1) {
-            width: 12px; height: 12px;
-            top: 10px; left: 10px;
-            background: var(--amber);
-            opacity: 0.9;
-        }
-
-        .logo-icon .wave:nth-child(2) {
-            width: 22px; height: 22px;
-            top: 5px; left: 5px;
-            opacity: 0.4;
-        }
-
-        .logo-icon .wave:nth-child(3) {
-            width: 30px; height: 30px;
-            top: 1px; left: 1px;
-            opacity: 0.2;
-        }
-
-        .logo-text {
-            font-family: var(--font-display);
-            font-size: 22px;
-            font-weight: 700;
-            color: var(--ink);
-            letter-spacing: -0.5px;
-        }
-
-        .logo-text span { color: var(--amber); }
-
-        .header-right {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-        }
-
-        .user-name {
-            font-size: 13px;
-            color: var(--slate);
-        }
-
-        /* --- Buttons --- */
-        .btn {
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            padding: 8px 16px;
-            border-radius: var(--radius-sm);
-            font-size: 13px;
-            font-weight: 500;
-            border: none;
-            cursor: pointer;
-            transition: all 0.15s;
-            font-family: var(--font-body);
-        }
-
-        .btn-primary {
-            background: var(--amber);
-            color: white;
-        }
-        .btn-primary:hover { background: var(--amber-dark); }
-
-        .btn-ghost {
-            background: transparent;
-            color: var(--slate);
-            border: 1px solid var(--border);
-        }
-        .btn-ghost:hover { background: var(--cloud); }
-
-        .btn-icon {
-            width: 32px;
-            height: 32px;
-            padding: 0;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            border-radius: 50%;
-            border: none;
-            background: transparent;
-            color: var(--slate);
-            cursor: pointer;
-            transition: all 0.15s;
-        }
+        .btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: var(--radius-sm); font-size: 13px; font-weight: 500; border: none; cursor: pointer; transition: all 0.15s; font-family: var(--font-body); }
+        .btn-primary { background: var(--ink); color: white; }
+        .btn-primary:hover { background: #000; }
+        .btn-icon { width: 32px; height: 32px; padding: 0; display: flex; align-items: center; justify-content: center; border-radius: 50%; border: none; background: transparent; color: var(--slate); cursor: pointer; transition: all 0.15s; }
         .btn-icon:hover { background: var(--cloud); }
 
-        /* --- Main layout --- */
-        .main {
-            max-width: 960px;
-            margin: 0 auto;
-            padding: 32px 24px;
-        }
-
-        /* --- Section title --- */
-        .section-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            margin-bottom: 20px;
-        }
-
-        .section-title {
-            font-family: var(--font-display);
-            font-size: 20px;
-            font-weight: 600;
-            color: var(--ink);
-            letter-spacing: -0.3px;
-        }
-
-        .section-count {
-            font-size: 12px;
-            color: var(--mist);
-            background: var(--cloud);
-            padding: 3px 10px;
-            border-radius: 20px;
-        }
+        .main { max-width: 1000px; margin: 0 auto; padding: 32px 24px; }
 
         /* --- Upload area --- */
-        .upload-area {
-            border: 2px dashed var(--border);
-            border-radius: var(--radius);
-            padding: 48px;
-            text-align: center;
-            cursor: pointer;
-            transition: all 0.2s;
-            margin-bottom: 32px;
-            background: var(--white);
-        }
+        .upload-area { border: 2px dashed var(--border); border-radius: var(--radius); padding: 40px; text-align: center; cursor: pointer; transition: all 0.2s; margin-bottom: 36px; background: var(--white); }
+        .upload-area:hover, .upload-area.dragover { border-color: var(--ink); background: var(--accent-light); }
+        .upload-area.uploading { pointer-events: none; opacity: 0.7; }
+        .upload-icon { width: 48px; height: 48px; background: var(--accent-light); border-radius: 12px; display: flex; align-items: center; justify-content: center; margin: 0 auto 12px; }
+        .upload-icon svg { width: 22px; height: 22px; color: var(--ink); }
+        .upload-area h3 { font-family: var(--font-display); font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+        .upload-area p { font-size: 13px; color: var(--slate); }
 
-        .upload-area:hover, .upload-area.dragover {
-            border-color: var(--amber);
-            background: var(--amber-light);
-        }
+        /* --- Book grid (Speechify style) --- */
+        .section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+        .section-title { font-family: var(--font-display); font-size: 18px; font-weight: 600; }
 
-        .upload-area.uploading {
-            pointer-events: none;
-            opacity: 0.7;
-        }
+        .book-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 24px; }
 
-        .upload-icon {
-            width: 52px;
-            height: 52px;
-            background: var(--amber-light);
-            border-radius: 14px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin: 0 auto 14px;
-        }
+        .book-card { cursor: pointer; transition: transform 0.2s; position: relative; }
+        .book-card:hover { transform: translateY(-4px); }
 
-        .upload-icon svg { width: 24px; height: 24px; color: var(--amber); }
+        .book-cover-wrap { width: 100%; aspect-ratio: 3/4; border-radius: 8px; overflow: hidden; background: var(--charcoal); margin-bottom: 10px; box-shadow: 0 4px 16px rgba(0,0,0,0.15); position: relative; }
+        .book-cover-wrap img { width: 100%; height: 100%; object-fit: cover; }
+        .book-cover-fallback { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; }
+        .book-cover-fallback svg { width: 40px; height: 40px; color: rgba(255,255,255,0.4); }
 
-        .upload-area h3 {
-            font-family: var(--font-display);
-            font-size: 16px;
-            font-weight: 600;
-            margin-bottom: 4px;
-        }
+        .book-progress-bar { position: absolute; bottom: 0; left: 0; right: 0; height: 3px; background: rgba(0,0,0,0.3); }
+        .book-progress-fill { height: 100%; background: white; transition: width 0.3s; }
 
-        .upload-area p {
-            font-size: 13px;
-            color: var(--slate);
-        }
+        .book-title { font-size: 13px; font-weight: 500; line-height: 1.3; margin-bottom: 3px; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+        .book-meta { font-size: 11px; color: var(--mist); }
 
-        /* --- Document grid --- */
-        .doc-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-            gap: 16px;
-        }
-
-        .doc-card {
-            background: var(--white);
-            border: 1px solid var(--border);
-            border-radius: var(--radius);
-            padding: 20px;
-            cursor: pointer;
-            transition: all 0.2s;
-            position: relative;
-        }
-
-        .doc-card:hover {
-            box-shadow: var(--shadow-md);
-            border-color: var(--amber);
-            transform: translateY(-2px);
-        }
-
-        .doc-card-header {
-            display: flex;
-            align-items: flex-start;
-            gap: 14px;
-            margin-bottom: 16px;
-        }
-
-        .doc-cover {
-            width: 44px;
-            height: 56px;
-            border-radius: 6px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            flex-shrink: 0;
-        }
-
-        .doc-cover svg { width: 20px; height: 20px; color: white; opacity: 0.9; }
-
-        .doc-cover-img {
-            width: 44px;
-            height: 56px;
-            border-radius: 6px;
-            object-fit: cover;
-            flex-shrink: 0;
-            box-shadow: 0 1px 4px rgba(0,0,0,0.1);
-        }
-
-        .doc-info { flex: 1; min-width: 0; }
-
-        .doc-title {
-            font-family: var(--font-display);
-            font-size: 15px;
-            font-weight: 600;
-            line-height: 1.3;
-            margin-bottom: 6px;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-        }
-
-        .doc-meta {
-            font-size: 12px;
-            color: var(--mist);
-            display: flex;
-            gap: 12px;
-        }
-
-        .doc-progress-bar {
-            height: 3px;
-            background: var(--cloud);
-            border-radius: 2px;
-            overflow: hidden;
-        }
-
-        .doc-progress-fill {
-            height: 100%;
-            background: var(--amber);
-            border-radius: 2px;
-            transition: width 0.3s;
-        }
-
-        .doc-delete {
-            position: absolute;
-            top: 12px;
-            right: 12px;
-            opacity: 0;
-            transition: opacity 0.15s;
-        }
-
-        .doc-card:hover .doc-delete { opacity: 1; }
+        .book-delete { position: absolute; top: 6px; right: 6px; width: 28px; height: 28px; border-radius: 50%; background: rgba(0,0,0,0.6); border: none; color: white; cursor: pointer; display: flex; align-items: center; justify-content: center; opacity: 0; transition: opacity 0.15s; z-index: 2; }
+        .book-card:hover .book-delete { opacity: 1; }
+        .book-delete:hover { background: rgba(220,38,38,0.8); }
 
         /* --- Player view --- */
         .player-view { display: none; }
         .player-view.active { display: block; }
         .library-view.hidden { display: none; }
 
-        .player-back {
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            font-size: 13px;
-            color: var(--slate);
-            cursor: pointer;
-            margin-bottom: 24px;
-            padding: 6px 0;
-        }
+        .player-back { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--slate); cursor: pointer; margin-bottom: 24px; padding: 6px 0; }
         .player-back:hover { color: var(--ink); }
 
-        .player-header {
-            display: flex;
-            align-items: flex-start;
-            gap: 20px;
-            margin-bottom: 32px;
-        }
-
-        .player-cover {
-            width: 80px;
-            height: 100px;
-            border-radius: 10px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            flex-shrink: 0;
-            box-shadow: var(--shadow-md);
-        }
-
-        .player-cover svg { width: 36px; height: 36px; color: white; opacity: 0.9; }
-
-        .player-cover-img {
-            width: 80px;
-            height: 100px;
-            border-radius: 10px;
-            object-fit: cover;
-            flex-shrink: 0;
-            box-shadow: var(--shadow-md);
-        }
-
-        .player-title {
-            font-family: var(--font-display);
-            font-size: 26px;
-            font-weight: 700;
-            letter-spacing: -0.5px;
-            margin-bottom: 6px;
-            line-height: 1.2;
-        }
-
-        .player-subtitle {
-            font-size: 14px;
-            color: var(--slate);
-        }
+        .player-header { display: flex; align-items: flex-start; gap: 20px; margin-bottom: 28px; }
+        .player-cover-img { width: 100px; height: 130px; border-radius: 10px; object-fit: cover; flex-shrink: 0; box-shadow: 0 4px 20px rgba(0,0,0,0.15); }
+        .player-cover { width: 100px; height: 130px; border-radius: 10px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; box-shadow: var(--shadow-md); }
+        .player-cover svg { width: 36px; height: 36px; color: white; opacity: 0.7; }
+        .player-title { font-family: var(--font-display); font-size: 24px; font-weight: 700; letter-spacing: -0.5px; margin-bottom: 6px; line-height: 1.2; }
+        .player-subtitle { font-size: 14px; color: var(--slate); }
 
         /* --- Audio controls --- */
-        .player-controls {
-            background: var(--white);
-            border: 1px solid var(--border);
-            border-radius: var(--radius);
-            padding: 28px;
-            margin-bottom: 24px;
-        }
-
-        .controls-top {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 20px;
-            margin-bottom: 24px;
-        }
-
-        .play-btn {
-            width: 60px;
-            height: 60px;
-            border-radius: 50%;
-            background: var(--amber);
-            border: none;
-            color: white;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: all 0.15s;
-            box-shadow: 0 4px 16px rgba(0,0,0,0.2);
-        }
-        .play-btn:hover { background: var(--amber-dark); transform: scale(1.05); }
-        .play-btn svg { width: 26px; height: 26px; }
-
-        .skip-btn {
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
-            background: transparent;
-            border: 1px solid var(--border);
-            color: var(--slate);
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: all 0.15s;
-        }
+        .player-controls { background: var(--white); border: 1px solid var(--border); border-radius: var(--radius); padding: 24px; margin-bottom: 24px; }
+        .controls-top { display: flex; align-items: center; justify-content: center; gap: 20px; margin-bottom: 20px; }
+        .play-btn { width: 56px; height: 56px; border-radius: 50%; background: var(--ink); border: none; color: white; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.15s; box-shadow: 0 4px 16px rgba(0,0,0,0.2); }
+        .play-btn:hover { background: #000; transform: scale(1.05); }
+        .play-btn svg { width: 24px; height: 24px; }
+        .skip-btn { width: 38px; height: 38px; border-radius: 50%; background: transparent; border: 1px solid var(--border); color: var(--slate); cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.15s; }
         .skip-btn:hover { background: var(--cloud); color: var(--ink); }
-        .skip-btn svg { width: 18px; height: 18px; }
+        .skip-btn svg { width: 16px; height: 16px; }
 
-        .progress-container {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-        }
-
-        .progress-time {
-            font-size: 12px;
-            font-family: var(--font-mono);
-            color: var(--mist);
-            min-width: 52px;
-        }
-
+        .progress-container { display: flex; align-items: center; gap: 12px; }
+        .progress-time { font-size: 12px; font-family: var(--font-mono); color: var(--mist); min-width: 48px; }
         .progress-time.right { text-align: right; }
-
-        .progress-bar {
-            flex: 1;
-            height: 4px;
-            background: var(--cloud);
-            border-radius: 2px;
-            cursor: pointer;
-            position: relative;
-            transition: height 0.1s;
-        }
-
+        .progress-bar { flex: 1; height: 4px; background: var(--cloud); border-radius: 2px; cursor: pointer; }
         .progress-bar:hover { height: 6px; }
+        .progress-fill { height: 100%; background: var(--ink); border-radius: 2px; transition: width 0.1s linear; }
 
-        .progress-fill {
-            height: 100%;
-            background: var(--amber);
-            border-radius: 2px;
-            transition: width 0.1s linear;
-        }
+        .controls-bottom { display: flex; align-items: center; justify-content: space-between; margin-top: 14px; }
+        .chunk-info { font-size: 12px; color: var(--mist); }
+        .speed-control { display: flex; gap: 4px; }
+        .speed-btn { padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: 500; border: 1px solid var(--border); background: transparent; color: var(--slate); cursor: pointer; font-family: var(--font-mono); transition: all 0.15s; }
+        .speed-btn:hover, .speed-btn.active { background: var(--ink); color: white; border-color: var(--ink); }
 
-        .controls-bottom {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            margin-top: 18px;
-        }
+        /* --- Text panel com highlight --- */
+        .text-panel { background: var(--white); border: 1px solid var(--border); border-radius: var(--radius); padding: 32px; max-height: 450px; overflow-y: auto; line-height: 2; font-size: 17px; color: var(--charcoal); scroll-behavior: smooth; }
+        .text-panel .word { cursor: pointer; border-radius: 3px; padding: 1px 0; transition: background 0.1s; }
+        .text-panel .word:hover { background: var(--cloud); }
+        .text-panel .word.active { background: var(--highlight); border-radius: 3px; padding: 1px 2px; }
+        .text-panel .word.spoken { color: var(--ink); }
 
-        .chunk-info {
-            font-size: 12px;
-            color: var(--mist);
-        }
-
-        .speed-control {
-            display: flex;
-            align-items: center;
-            gap: 4px;
-        }
-
-        .speed-btn {
-            padding: 4px 10px;
-            border-radius: 20px;
-            font-size: 12px;
-            font-weight: 500;
-            border: 1px solid var(--border);
-            background: transparent;
-            color: var(--slate);
-            cursor: pointer;
-            font-family: var(--font-mono);
-            transition: all 0.15s;
-        }
-        .speed-btn:hover, .speed-btn.active {
-            background: var(--amber);
-            color: white;
-            border-color: var(--amber);
-        }
-
-        /* --- Text display --- */
-        .text-panel {
-            background: var(--white);
-            border: 1px solid var(--border);
-            border-radius: var(--radius);
-            padding: 36px;
-            max-height: 400px;
-            overflow-y: auto;
-            line-height: 1.9;
-            font-size: 16px;
-            color: var(--charcoal);
-        }
-
-        .text-panel p { margin-bottom: 16px; }
-
-        /* --- Chapters list --- */
-        .chapters-title {
-            font-family: var(--font-display);
-            font-size: 16px;
-            font-weight: 600;
-            margin: 28px 0 14px;
-        }
-
-        .chapters-list {
-            display: flex;
-            flex-direction: column;
-            gap: 2px;
-        }
-
-        .chapter-item {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            padding: 10px 14px;
-            border-radius: var(--radius-sm);
-            cursor: pointer;
-            transition: all 0.15s;
-            font-size: 14px;
-        }
-
+        /* --- Chapters --- */
+        .chapters-title { font-family: var(--font-display); font-size: 15px; font-weight: 600; margin: 24px 0 12px; }
+        .chapters-list { display: flex; flex-direction: column; gap: 2px; }
+        .chapter-item { display: flex; align-items: center; gap: 12px; padding: 8px 12px; border-radius: var(--radius-sm); cursor: pointer; transition: all 0.15s; font-size: 13px; }
         .chapter-item:hover { background: var(--cloud); }
-        .chapter-item.active { background: var(--amber-light); color: var(--amber-dark); font-weight: 500; }
+        .chapter-item.active { background: var(--accent-light); font-weight: 500; }
         .chapter-item.played { color: var(--mist); }
+        .chapter-num { width: 24px; height: 24px; border-radius: 50%; background: var(--cloud); display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 600; flex-shrink: 0; }
+        .chapter-item.active .chapter-num { background: var(--ink); color: white; }
+        .chapter-page { margin-left: auto; font-size: 10px; color: var(--mist); }
 
-        .chapter-num {
-            width: 26px;
-            height: 26px;
-            border-radius: 50%;
-            background: var(--cloud);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 11px;
-            font-weight: 600;
-            flex-shrink: 0;
-        }
-
-        .chapter-item.active .chapter-num {
-            background: var(--amber);
-            color: white;
-        }
-
-        .chapter-page {
-            margin-left: auto;
-            font-size: 11px;
-            color: var(--mist);
-        }
-
-        /* --- Loading --- */
-        .loading-spinner {
-            width: 20px;
-            height: 20px;
-            border: 2px solid var(--border);
-            border-top-color: var(--amber);
-            border-radius: 50%;
-            animation: spin 0.6s linear infinite;
-        }
-
+        .loading-spinner { width: 18px; height: 18px; border: 2px solid var(--border); border-top-color: var(--ink); border-radius: 50%; animation: spin 0.6s linear infinite; }
         @keyframes spin { to { transform: rotate(360deg); } }
 
-        .toast {
-            position: fixed;
-            bottom: 24px;
-            right: 24px;
-            background: var(--ink);
-            color: white;
-            padding: 12px 20px;
-            border-radius: var(--radius-sm);
-            font-size: 13px;
-            box-shadow: var(--shadow-lg);
-            z-index: 1000;
-            transform: translateY(100px);
-            opacity: 0;
-            transition: all 0.3s;
-        }
+        .toast { position: fixed; bottom: 24px; right: 24px; background: var(--ink); color: white; padding: 12px 20px; border-radius: var(--radius-sm); font-size: 13px; box-shadow: var(--shadow-lg); z-index: 1000; transform: translateY(100px); opacity: 0; transition: all 0.3s; }
+        .toast.show { transform: translateY(0); opacity: 1; }
 
-        .toast.show {
-            transform: translateY(0);
-            opacity: 1;
-        }
-
-        /* --- Responsive --- */
         @media (max-width: 640px) {
             .header { padding: 12px 16px; }
             .main { padding: 20px 16px; }
-            .doc-grid { grid-template-columns: 1fr; }
-            .upload-area { padding: 32px 20px; }
+            .book-grid { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 16px; }
+            .upload-area { padding: 28px 16px; }
             .player-title { font-size: 20px; }
-            .text-panel { padding: 20px; font-size: 15px; }
-            .player-controls { padding: 20px; }
-            .controls-top { gap: 14px; }
-            .play-btn { width: 52px; height: 52px; }
+            .text-panel { padding: 20px; font-size: 16px; }
+            .player-controls { padding: 18px; }
+            .play-btn { width: 48px; height: 48px; }
         }
     </style>
 </head>
@@ -635,12 +171,8 @@
 
 <div class="header">
     <div class="logo">
-        <div class="logo-icon">
-            <div class="wave"></div>
-            <div class="wave"></div>
-            <div class="wave"></div>
-        </div>
-        <div class="logo-text">echo<span>.</span></div>
+        <div class="logo-icon"><div class="wave"></div><div class="wave"></div><div class="wave"></div></div>
+        <div class="logo-text">echo.</div>
     </div>
     <div class="header-right">
         <span class="user-name" id="userName"></span>
@@ -657,30 +189,20 @@
 <input type="file" id="fileInput" accept=".pdf" style="display:none" onchange="handleFileUpload(this.files[0])">
 
 <div class="main">
-    <!-- Library View -->
     <div class="library-view" id="libraryView">
         <div class="upload-area" id="uploadArea" onclick="document.getElementById('fileInput').click()">
-            <div class="upload-icon">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                    <polyline points="17 8 12 3 7 8"/>
-                    <line x1="12" y1="3" x2="12" y2="15"/>
-                </svg>
-            </div>
+            <div class="upload-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg></div>
             <h3>Arraste um PDF ou clique para enviar</h3>
             <p>Livros, artigos, apostilas — o Antonio lê para você</p>
         </div>
-
         <div id="docList"></div>
     </div>
 
-    <!-- Player View -->
     <div class="player-view" id="playerView">
         <div class="player-back" onclick="showLibrary()">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
             Biblioteca
         </div>
-
         <div class="player-header">
             <img class="player-cover-img" id="playerCoverImg" src="" alt="" style="display:none">
             <div class="player-cover" id="playerCover">
@@ -694,26 +216,18 @@
 
         <div class="player-controls">
             <div class="controls-top">
-                <button class="skip-btn" onclick="prevChunk()" title="Anterior">
-                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg>
-                </button>
+                <button class="skip-btn" onclick="prevChunk()"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg></button>
                 <button class="play-btn" id="playBtn" onclick="togglePlay()">
                     <svg id="playIcon" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
                     <svg id="pauseIcon" viewBox="0 0 24 24" fill="currentColor" style="display:none"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
                 </button>
-                <button class="skip-btn" onclick="nextChunk()" title="Próximo">
-                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 6h2v12h-2zm-10 0l8.5 6L6 18z"/></svg>
-                </button>
+                <button class="skip-btn" onclick="nextChunk()"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 6h2v12h-2zm-10 0l8.5 6L6 18z"/></svg></button>
             </div>
-
             <div class="progress-container">
                 <span class="progress-time" id="currentTime">0:00</span>
-                <div class="progress-bar" id="progressBar" onclick="seekAudio(event)">
-                    <div class="progress-fill" id="progressFill" style="width:0%"></div>
-                </div>
+                <div class="progress-bar" id="progressBar" onclick="seekAudio(event)"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
                 <span class="progress-time right" id="totalTime">0:00</span>
             </div>
-
             <div class="controls-bottom">
                 <span class="chunk-info" id="chunkInfo"></span>
                 <div class="speed-control">
@@ -745,6 +259,8 @@ let currentChunks = [];
 let currentChunkIndex = 0;
 let isPlaying = false;
 let currentSpeed = 1;
+let wordBoundaries = [];
+let highlightRAF = null;
 const audio = document.getElementById('audioPlayer');
 
 // --- Init ---
@@ -769,12 +285,8 @@ async function handleLogout() {
 // --- Drag & Drop ---
 function setupDragDrop() {
     const area = document.getElementById('uploadArea');
-    ['dragenter', 'dragover'].forEach(e => {
-        area.addEventListener(e, ev => { ev.preventDefault(); area.classList.add('dragover'); });
-    });
-    ['dragleave', 'drop'].forEach(e => {
-        area.addEventListener(e, ev => { ev.preventDefault(); area.classList.remove('dragover'); });
-    });
+    ['dragenter', 'dragover'].forEach(e => area.addEventListener(e, ev => { ev.preventDefault(); area.classList.add('dragover'); }));
+    ['dragleave', 'drop'].forEach(e => area.addEventListener(e, ev => { ev.preventDefault(); area.classList.remove('dragover'); }));
     area.addEventListener('drop', ev => {
         const file = ev.dataTransfer.files[0];
         if (file && file.type === 'application/pdf') handleFileUpload(file);
@@ -783,82 +295,53 @@ function setupDragDrop() {
 
 // --- Upload ---
 async function handleFileUpload(file) {
-    if (!file || !file.name.toLowerCase().endsWith('.pdf')) {
-        showToast('Apenas arquivos PDF são aceitos');
-        return;
-    }
-
+    if (!file || !file.name.toLowerCase().endsWith('.pdf')) { showToast('Apenas PDFs'); return; }
     const area = document.getElementById('uploadArea');
     area.classList.add('uploading');
     area.innerHTML = '<div class="loading-spinner" style="margin:0 auto"></div><h3 style="margin-top:12px;font-family:var(--font-display)">Processando...</h3><p>Extraindo texto do PDF</p>';
-
     const formData = new FormData();
     formData.append('file', file);
-
     try {
         const res = await fetch('/api/documents', { method: 'POST', body: formData });
         const data = await res.json();
-        if (!res.ok) throw new Error(data.detail || 'Erro no upload');
-        showToast(`"${data.title}" adicionado — ${data.total_chunks} trechos`);
+        if (!res.ok) throw new Error(data.detail || 'Erro');
+        showToast(`"${data.title}" — ${data.total_chunks} trechos`);
         loadDocuments();
-    } catch (err) {
-        showToast(err.message);
-    } finally {
+    } catch (err) { showToast(err.message); }
+    finally {
         area.classList.remove('uploading');
-        area.innerHTML = `
-            <div class="upload-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg></div>
-            <h3>Arraste um PDF ou clique para enviar</h3>
-            <p>Livros, artigos, apostilas — o Antonio lê para você</p>`;
+        area.innerHTML = '<div class="upload-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg></div><h3>Arraste um PDF ou clique para enviar</h3><p>Livros, artigos, apostilas — o Antonio lê para você</p>';
     }
     document.getElementById('fileInput').value = '';
 }
 
 // --- Documents ---
 async function loadDocuments() {
-    try {
-        const res = await fetch('/api/documents');
-        const data = await res.json();
-        renderDocuments(data.documents);
-    } catch (err) {
-        console.error('Erro ao carregar documentos:', err);
-    }
+    try { const res = await fetch('/api/documents'); const data = await res.json(); renderDocuments(data.documents); } catch {}
 }
 
 function renderDocuments(docs) {
-    const container = document.getElementById('docList');
-    if (!docs.length) { container.innerHTML = ''; return; }
-
-    container.innerHTML = `
-        <div class="section-header">
-            <div class="section-title">Sua biblioteca</div>
-            <span class="section-count">${docs.length} documento${docs.length > 1 ? 's' : ''}</span>
-        </div>
-        <div class="doc-grid">
+    const c = document.getElementById('docList');
+    if (!docs.length) { c.innerHTML = ''; return; }
+    c.innerHTML = `
+        <div class="section-header"><div class="section-title">Sua biblioteca</div></div>
+        <div class="book-grid">
             ${docs.map(doc => {
-                const progress = doc.total_chunks > 0 ? ((doc.current_chunk || 0) / doc.total_chunks * 100) : 0;
-                const size = doc.file_size > 1048576 ? (doc.file_size / 1048576).toFixed(1) + ' MB' : Math.round(doc.file_size / 1024) + ' KB';
+                const pct = doc.total_chunks > 0 ? ((doc.current_chunk || 0) / doc.total_chunks * 100) : 0;
                 return `
-                <div class="doc-card" onclick="openDocument('${doc.id}')">
-                    <button class="btn-icon doc-delete" onclick="event.stopPropagation(); deleteDoc('${doc.id}', '${doc.title.replace(/'/g, "\\'")}')">
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                <div class="book-card" onclick="openDocument('${doc.id}')">
+                    <button class="book-delete" onclick="event.stopPropagation(); deleteDoc('${doc.id}', '${doc.title.replace(/'/g,"\\'")}')">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
                     </button>
-                    <div class="doc-card-header">
-                        <img class="doc-cover-img" src="/api/covers/${doc.id}.png" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" alt="">
-                        <div class="doc-cover" style="background:${doc.cover_color};display:none">
+                    <div class="book-cover-wrap">
+                        <img src="/api/covers/${doc.id}.png" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" alt="">
+                        <div class="book-cover-fallback" style="display:none;background:${doc.cover_color}">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
                         </div>
-                        <div class="doc-info">
-                            <div class="doc-title">${doc.title}</div>
-                            <div class="doc-meta">
-                                <span>${doc.total_pages} pág.</span>
-                                <span>${doc.total_chunks} trechos</span>
-                                <span>${size}</span>
-                            </div>
-                        </div>
+                        ${pct > 0 ? `<div class="book-progress-bar"><div class="book-progress-fill" style="width:${pct}%"></div></div>` : ''}
                     </div>
-                    <div class="doc-progress-bar">
-                        <div class="doc-progress-fill" style="width:${progress}%"></div>
-                    </div>
+                    <div class="book-title">${doc.title}</div>
+                    <div class="book-meta">${doc.total_pages} pág. · ${doc.total_chunks} trechos</div>
                 </div>`;
             }).join('')}
         </div>`;
@@ -866,44 +349,34 @@ function renderDocuments(docs) {
 
 async function deleteDoc(id, title) {
     if (!confirm(`Remover "${title}"?`)) return;
-    try {
-        await fetch(`/api/documents/${id}`, { method: 'DELETE' });
-        showToast('Documento removido');
-        loadDocuments();
-    } catch (err) { showToast('Erro ao remover'); }
+    await fetch(`/api/documents/${id}`, { method: 'DELETE' });
+    showToast('Removido');
+    loadDocuments();
 }
 
-// --- Open document (player) ---
+// --- Player ---
 async function openDocument(docId) {
-    try {
-        const res = await fetch(`/api/documents/${docId}`);
-        const data = await res.json();
+    const res = await fetch(`/api/documents/${docId}`);
+    const data = await res.json();
+    currentDoc = data.document;
+    currentChunks = data.chunks;
+    currentChunkIndex = data.progress?.current_chunk || 0;
 
-        currentDoc = data.document;
-        currentChunks = data.chunks;
-        currentChunkIndex = data.progress?.current_chunk || 0;
+    document.getElementById('playerTitle').textContent = currentDoc.title;
+    document.getElementById('playerSubtitle').textContent = `${currentDoc.total_pages} páginas · ${currentDoc.total_chunks} trechos`;
+    document.getElementById('playerCover').style.background = currentDoc.cover_color;
+    document.getElementById('chunkInfo').textContent = `${currentChunkIndex + 1} de ${currentChunks.length}`;
 
-        document.getElementById('playerTitle').textContent = currentDoc.title;
-        document.getElementById('playerSubtitle').textContent = `${currentDoc.total_pages} páginas · ${currentDoc.total_chunks} trechos`;
-        document.getElementById('playerCover').style.background = currentDoc.cover_color;
+    const coverImg = document.getElementById('playerCoverImg');
+    const coverFallback = document.getElementById('playerCover');
+    coverImg.src = `/api/covers/${currentDoc.id}.png`;
+    coverImg.onload = () => { coverImg.style.display = 'block'; coverFallback.style.display = 'none'; };
+    coverImg.onerror = () => { coverImg.style.display = 'none'; coverFallback.style.display = 'flex'; };
 
-        // Mostrar capa se existir
-        const coverImg = document.getElementById('playerCoverImg');
-        const coverFallback = document.getElementById('playerCover');
-        coverImg.src = `/api/covers/${currentDoc.id}.png`;
-        coverImg.onload = () => { coverImg.style.display = 'block'; coverFallback.style.display = 'none'; };
-        coverImg.onerror = () => { coverImg.style.display = 'none'; coverFallback.style.display = 'flex'; };
-        document.getElementById('chunkInfo').textContent = `${currentChunkIndex + 1} de ${currentChunks.length}`;
-
-        renderChapters();
-
-        document.getElementById('libraryView').classList.add('hidden');
-        document.getElementById('playerView').classList.add('active');
-
-        await loadChunkText(currentChunkIndex);
-    } catch (err) {
-        showToast('Erro ao abrir documento');
-    }
+    renderChapters();
+    document.getElementById('libraryView').classList.add('hidden');
+    document.getElementById('playerView').classList.add('active');
+    await loadChunkText(currentChunkIndex);
 }
 
 function showLibrary() {
@@ -917,58 +390,203 @@ function renderChapters() {
     document.getElementById('chaptersList').innerHTML = currentChunks.map((c, i) => `
         <div class="chapter-item ${i === currentChunkIndex ? 'active' : ''} ${i < currentChunkIndex ? 'played' : ''}" onclick="goToChunk(${i})">
             <div class="chapter-num">${i + 1}</div>
-            <span>${c.text}</span>
+            <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${c.text}</span>
             <span class="chapter-page">p. ${c.page}</span>
         </div>
     `).join('');
 }
 
-// --- Audio playback ---
-async function togglePlay() {
-    if (isPlaying) { pauseAudio(); } else { await playCurrentChunk(); }
-}
+// --- Audio ---
+async function togglePlay() { if (isPlaying) pauseAudio(); else await playCurrentChunk(); }
 
 async function playCurrentChunk() {
     if (!currentDoc) return;
+    stopHighlightLoop();
     showPlayLoading(true);
     try {
+        // 1. Gerar áudio (retorna URL + boundaries URL)
         const res = await fetch(`/api/documents/${currentDoc.id}/chunks/${currentChunkIndex}/audio`, { method: 'POST' });
         const data = await res.json();
-        if (!res.ok) throw new Error(data.detail || 'Erro ao gerar áudio');
+        if (!res.ok) throw new Error(data.detail || 'Erro');
 
+        // 2. Carregar texto no DOM e boundaries em paralelo
+        const [_, bData] = await Promise.all([
+            loadChunkText(currentChunkIndex),
+            fetch(data.boundaries_url).then(r => r.json()).catch(() => []),
+        ]);
+        wordBoundaries = bData;
+
+        // 3. Construir mapa boundary → DOM word
+        buildBoundaryMap();
+
+        // 4. Iniciar áudio
         audio.src = data.audio_url;
         audio.playbackRate = currentSpeed;
         await audio.play();
         isPlaying = true;
         updatePlayButton();
         showPlayLoading(false);
+        startHighlightLoop();
 
         fetch(`/api/documents/${currentDoc.id}/progress?current_chunk=${currentChunkIndex}`, { method: 'PUT' });
     } catch (err) {
         showPlayLoading(false);
-        showToast('Erro ao gerar áudio: ' + err.message);
+        showToast(err.message);
     }
 }
 
-function pauseAudio() { audio.pause(); isPlaying = false; updatePlayButton(); }
-function stopAudio() { audio.pause(); audio.src = ''; isPlaying = false; updatePlayButton(); }
+function pauseAudio() { audio.pause(); isPlaying = false; updatePlayButton(); stopHighlightLoop(); }
+function stopAudio() { audio.pause(); audio.src = ''; isPlaying = false; updatePlayButton(); stopHighlightLoop(); wordBoundaries = []; }
 
 function updatePlayButton() {
     document.getElementById('playIcon').style.display = isPlaying ? 'none' : 'block';
     document.getElementById('pauseIcon').style.display = isPlaying ? 'block' : 'none';
 }
 
-function showPlayLoading(loading) {
+function showPlayLoading(on) {
     const btn = document.getElementById('playBtn');
-    if (loading) {
-        btn.innerHTML = '<div class="loading-spinner" style="border-top-color:white;border-color:rgba(255,255,255,0.3)"></div>';
-    } else {
-        btn.innerHTML = `
-            <svg id="playIcon" viewBox="0 0 24 24" fill="currentColor" style="display:${isPlaying ? 'none' : 'block'}"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-            <svg id="pauseIcon" viewBox="0 0 24 24" fill="currentColor" style="display:${isPlaying ? 'block' : 'none'}"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>`;
+    if (on) btn.innerHTML = '<div class="loading-spinner" style="border-top-color:white;border-color:rgba(255,255,255,0.3)"></div>';
+    else btn.innerHTML = `<svg id="playIcon" viewBox="0 0 24 24" fill="currentColor" style="display:${isPlaying?'none':'block'}"><polygon points="5 3 19 12 5 21 5 3"/></svg><svg id="pauseIcon" viewBox="0 0 24 24" fill="currentColor" style="display:${isPlaying?'block':'none'}"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>`;
+}
+
+// --- Highlight sync ---
+let boundaryToWordMap = []; // maps boundary index → DOM word index
+
+function startHighlightLoop() {
+    stopHighlightLoop();
+    function tick() {
+        if (!isPlaying) return;
+        updateHighlight();
+        highlightRAF = requestAnimationFrame(tick);
+    }
+    highlightRAF = requestAnimationFrame(tick);
+}
+
+function stopHighlightLoop() {
+    if (highlightRAF) { cancelAnimationFrame(highlightRAF); highlightRAF = null; }
+}
+
+function buildBoundaryMap() {
+    // Mapeia cada boundary → word DOM element por correspondência de texto sequencial
+    boundaryToWordMap = [];
+    const words = document.querySelectorAll('#textPanel .word');
+    let domIdx = 0;
+
+    for (let bi = 0; bi < wordBoundaries.length; bi++) {
+        const bText = wordBoundaries[bi].text.toLowerCase().replace(/[.,;:!?"'()\[\]]/g, '');
+        let found = false;
+
+        // Procura a partir de domIdx para frente (match sequencial)
+        for (let di = domIdx; di < words.length && di < domIdx + 15; di++) {
+            const wText = words[di].textContent.toLowerCase().replace(/[.,;:!?"'()\[\]]/g, '');
+            if (wText === bText || wText.startsWith(bText) || bText.startsWith(wText)) {
+                boundaryToWordMap.push(di);
+                domIdx = di + 1;
+                found = true;
+                break;
+            }
+        }
+        if (!found) boundaryToWordMap.push(-1);
     }
 }
 
+function updateHighlight() {
+    if (!wordBoundaries.length) return;
+    const currentMs = audio.currentTime * 1000;
+    const words = document.querySelectorAll('#textPanel .word');
+
+    // Encontrar boundary ativo
+    let activeBIdx = -1;
+    for (let i = 0; i < wordBoundaries.length; i++) {
+        const b = wordBoundaries[i];
+        if (currentMs >= b.offset_ms && currentMs < b.offset_ms + b.duration_ms + 300) {
+            activeBIdx = i;
+        }
+    }
+
+    // Mapear boundary → DOM word
+    const activeWordIdx = activeBIdx >= 0 ? boundaryToWordMap[activeBIdx] : -1;
+    // Todas as palavras antes do ativo são "spoken"
+    const lastSpokenWordIdx = activeBIdx > 0 ? boundaryToWordMap[activeBIdx - 1] : -1;
+
+    words.forEach((w, i) => {
+        w.classList.toggle('active', i === activeWordIdx);
+        w.classList.toggle('spoken', i <= lastSpokenWordIdx && i !== activeWordIdx);
+    });
+
+    // Auto-scroll
+    if (activeWordIdx >= 0 && words[activeWordIdx]) {
+        const panel = document.getElementById('textPanel');
+        const word = words[activeWordIdx];
+        const wordTop = word.offsetTop - panel.offsetTop;
+        const panelScroll = panel.scrollTop;
+        const panelHeight = panel.clientHeight;
+
+        if (wordTop < panelScroll + 60 || wordTop > panelScroll + panelHeight - 80) {
+            panel.scrollTo({ top: wordTop - panelHeight / 3, behavior: 'smooth' });
+        }
+    }
+}
+
+// --- Text rendering com words clicáveis ---
+async function loadChunkText(index) {
+    try {
+        const res = await fetch(`/api/documents/${currentDoc.id}/chunks/${index}/text`);
+        const data = await res.json();
+        renderTextWithWords(data.text);
+    } catch {}
+}
+
+function renderTextWithWords(text) {
+    const panel = document.getElementById('textPanel');
+    const paragraphs = text.split('\n\n').filter(p => p.trim());
+    let wordIndex = 0;
+    let html = '';
+
+    for (const para of paragraphs) {
+        html += '<p>';
+        const tokens = para.split(/(\s+)/);
+        for (const token of tokens) {
+            if (token.trim()) {
+                html += `<span class="word" data-idx="${wordIndex}" onclick="seekToWord(${wordIndex})">${token}</span>`;
+                wordIndex++;
+            } else {
+                html += token;
+            }
+        }
+        html += '</p>';
+    }
+    panel.innerHTML = html;
+}
+
+function seekToWord(domWordIdx) {
+    // Encontrar o boundary mais próximo desta palavra do DOM
+    let bestBIdx = -1;
+    let bestDist = Infinity;
+    for (let bi = 0; bi < boundaryToWordMap.length; bi++) {
+        const dist = Math.abs(boundaryToWordMap[bi] - domWordIdx);
+        if (dist < bestDist) { bestDist = dist; bestBIdx = bi; }
+    }
+
+    if (bestBIdx >= 0 && wordBoundaries[bestBIdx]) {
+        audio.currentTime = wordBoundaries[bestBIdx].offset_ms / 1000;
+        if (!isPlaying) {
+            audio.play();
+            isPlaying = true;
+            updatePlayButton();
+            startHighlightLoop();
+        }
+    }
+}
+
+// Garantir que o highlight loop está ativo sempre que o áudio toca
+audio.addEventListener('playing', () => {
+    if (!highlightRAF && wordBoundaries.length && boundaryToWordMap.length) {
+        startHighlightLoop();
+    }
+});
+
+// Audio events
 audio.addEventListener('timeupdate', () => {
     if (audio.duration) {
         document.getElementById('progressFill').style.width = (audio.currentTime / audio.duration * 100) + '%';
@@ -978,7 +596,8 @@ audio.addEventListener('timeupdate', () => {
 });
 
 audio.addEventListener('ended', () => {
-    if (currentChunkIndex < currentChunks.length - 1) { nextChunk(); }
+    stopHighlightLoop();
+    if (currentChunkIndex < currentChunks.length - 1) nextChunk();
     else { isPlaying = false; updatePlayButton(); showToast('Leitura concluída!'); }
 });
 
@@ -992,32 +611,16 @@ function seekAudio(event) {
 function setSpeed(speed) {
     currentSpeed = speed;
     audio.playbackRate = speed;
-    document.querySelectorAll('.speed-btn').forEach(btn => {
-        btn.classList.toggle('active', btn.textContent.trim() === speed + 'x');
-    });
+    document.querySelectorAll('.speed-btn').forEach(btn => btn.classList.toggle('active', btn.textContent.trim() === speed + 'x'));
 }
 
 async function nextChunk() {
-    if (currentChunkIndex < currentChunks.length - 1) {
-        currentChunkIndex++;
-        updateChunkUI();
-        if (isPlaying) await playCurrentChunk();
-    }
+    if (currentChunkIndex < currentChunks.length - 1) { currentChunkIndex++; updateChunkUI(); if (isPlaying) await playCurrentChunk(); }
 }
-
 async function prevChunk() {
-    if (currentChunkIndex > 0) {
-        currentChunkIndex--;
-        updateChunkUI();
-        if (isPlaying) await playCurrentChunk();
-    }
+    if (currentChunkIndex > 0) { currentChunkIndex--; updateChunkUI(); if (isPlaying) await playCurrentChunk(); }
 }
-
-async function goToChunk(index) {
-    currentChunkIndex = index;
-    updateChunkUI();
-    await playCurrentChunk();
-}
+async function goToChunk(index) { currentChunkIndex = index; updateChunkUI(); await playCurrentChunk(); }
 
 function updateChunkUI() {
     document.getElementById('chunkInfo').textContent = `${currentChunkIndex + 1} de ${currentChunks.length}`;
@@ -1025,25 +628,8 @@ function updateChunkUI() {
     loadChunkText(currentChunkIndex);
 }
 
-async function loadChunkText(index) {
-    try {
-        const res = await fetch(`/api/documents/${currentDoc.id}/chunks/${index}/text`);
-        const data = await res.json();
-        const paragraphs = data.text.split('\n\n').filter(p => p.trim());
-        document.getElementById('textPanel').innerHTML = paragraphs.map(p => `<p>${p}</p>`).join('');
-    } catch (err) { console.error(err); }
-}
-
-// --- Helpers ---
-function formatTime(s) { const m = Math.floor(s / 60); return `${m}:${Math.floor(s % 60).toString().padStart(2, '0')}`; }
-
-function showToast(message) {
-    const toast = document.getElementById('toast');
-    toast.textContent = message;
-    toast.classList.add('show');
-    setTimeout(() => toast.classList.remove('show'), 3000);
-}
+function formatTime(s) { return `${Math.floor(s/60)}:${Math.floor(s%60).toString().padStart(2,'0')}`; }
+function showToast(msg) { const t = document.getElementById('toast'); t.textContent = msg; t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 3000); }
 </script>
-
 </body>
 </html>
