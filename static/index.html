@@ -774,51 +774,49 @@ function setupPdfClickToRead(pageNum) {
 
         if (!closestWord) return;
 
+        // Encontrar o índice da palavra clicada na lista de words da página
+        const wordIdx = words.indexOf(closestWord);
+        const wordRatio = words.length > 0 ? wordIdx / words.length : 0;
+
         // Encontrar o chunk que contém esta página
         const chunkIdx = currentChunks.findIndex(c => c.page === pageNum);
         if (chunkIdx < 0) return;
 
-        // Mudar para o chunk correto se necessário
+        // Mudar para o chunk correto
         if (chunkIdx !== currentChunkIndex) {
             currentChunkIndex = chunkIdx;
             const cl=document.getElementById('chunkLabel'); if(cl) cl.textContent=`${currentChunkIndex+1} / ${currentChunks.length}`;
         }
 
-        // Gerar áudio + boundaries se não existem ainda (1 clique = play)
-        if (!wordBoundaries.length || !isPlaying) {
-            showPlayLoading(true);
-            try {
-                let data;
-                if (prefetchCache[currentChunkIndex]) {
-                    data = prefetchCache[currentChunkIndex];
-                    delete prefetchCache[currentChunkIndex];
-                } else {
-                    const r = await fetch(`/api/documents/${currentDoc.id}/chunks/${currentChunkIndex}/audio`, {method:'POST'});
-                    data = await r.json();
-                }
-
-                const [_, bData] = await Promise.all([
-                    loadChunkText(currentChunkIndex),
-                    fetch(data.boundaries_url).then(r=>r.json()).catch(()=>[]),
-                ]);
-                wordBoundaries = bData;
-                buildBoundaryMap();
-
-                audio.src = data.audio_url;
-                audio.playbackRate = currentSpeed;
-            } catch(e) { showPlayLoading(false); showToast(e.message); return; }
-        }
-
-        // Buscar boundary da palavra clicada e posicionar áudio
-        const cleanClick = closestWord.word.toLowerCase().replace(/[.,;:!?"'()\[\]]/g, '');
-        let found = false;
-        for (let bi = 0; bi < wordBoundaries.length; bi++) {
-            const cleanB = wordBoundaries[bi].text.toLowerCase().replace(/[.,;:!?"'()\[\]]/g, '');
-            if (cleanB === cleanClick || cleanB.startsWith(cleanClick) || cleanClick.startsWith(cleanB)) {
-                audio.currentTime = wordBoundaries[bi].offset_ms / 1000;
-                found = true;
-                break;
+        // Gerar áudio + boundaries (sempre recarregar para o chunk correto)
+        showPlayLoading(true);
+        try {
+            let data;
+            if (prefetchCache[currentChunkIndex]) {
+                data = prefetchCache[currentChunkIndex];
+                delete prefetchCache[currentChunkIndex];
+            } else {
+                const r = await fetch(`/api/documents/${currentDoc.id}/chunks/${currentChunkIndex}/audio`, {method:'POST'});
+                data = await r.json();
             }
+
+            const [_, bData] = await Promise.all([
+                loadChunkText(currentChunkIndex),
+                fetch(data.boundaries_url).then(r=>r.json()).catch(()=>[]),
+            ]);
+            wordBoundaries = bData;
+            buildBoundaryMap();
+
+            audio.src = data.audio_url;
+            audio.playbackRate = currentSpeed;
+        } catch(e) { showPlayLoading(false); showToast(e.message); return; }
+
+        // Usar posição proporcional para seek (mais confiável que text matching)
+        // Se clicou na palavra 60 de 200 na página (30%), vai para 30% do áudio
+        if (wordBoundaries.length > 0) {
+            const targetBIdx = Math.floor(wordRatio * wordBoundaries.length);
+            const safeBIdx = Math.min(targetBIdx, wordBoundaries.length - 1);
+            audio.currentTime = wordBoundaries[safeBIdx].offset_ms / 1000;
         }
 
         // Iniciar play

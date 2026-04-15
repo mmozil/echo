@@ -5,6 +5,7 @@ Upload de PDFs → extração de texto → TTS com Microsoft Edge (AntonioNeural
 
 import os
 import shutil
+import asyncio
 from pathlib import Path
 
 from fastapi import FastAPI, UploadFile, File, HTTPException, Query, Request, Response, Cookie
@@ -261,6 +262,9 @@ async def upload_document(file: UploadFile = File(...)):
     cover_path = os.path.join(COVERS_DIR, f"{doc_id}.png")
     has_cover = extract_cover(file_path, cover_path)
 
+    # Pré-gerar áudio de TODOS os chunks em background
+    asyncio.create_task(_pregenerate_all_audio(doc_id))
+
     return {
         "id": doc_id,
         "title": title,
@@ -269,6 +273,16 @@ async def upload_document(file: UploadFile = File(...)):
         "file_size": len(content),
         "has_cover": has_cover,
     }
+
+
+async def _pregenerate_all_audio(doc_id: str):
+    """Pré-gera áudio de todos os chunks em background."""
+    chunks = get_chunks(doc_id)
+    for chunk in chunks:
+        try:
+            await generate_audio(chunk["text_content"], chunk["id"])
+        except Exception:
+            pass  # Continuar mesmo se um falhar
 
 
 # --- Listar documentos ---
@@ -290,10 +304,19 @@ async def get_document_detail(doc_id: str):
     chunks = get_chunks(doc_id)
     progress = get_progress(doc_id)
 
+    # Contar chunks com áudio pronto
+    ready = sum(1 for c in chunks if c["audio_path"])
+
+    # Se nenhum chunk tem áudio, disparar pré-geração
+    if ready == 0:
+        asyncio.create_task(_pregenerate_all_audio(doc_id))
+
     return {
         "document": doc,
         "chunks": [{"index": c["chunk_index"], "page": c["page_number"], "text": c["text_content"][:200] + "...", "has_audio": bool(c["audio_path"])} for c in chunks],
         "progress": progress,
+        "audio_ready": ready,
+        "audio_total": len(chunks),
     }
 
 
