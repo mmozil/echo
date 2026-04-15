@@ -134,7 +134,7 @@
         /* Progress bar topo */
         .pp-progress { height: 2px; background: rgba(255,255,255,0.1); cursor: pointer; }
         .pp-progress:hover { height: 3px; }
-        .pfill { height: 100%; background: #3478F6; transition: width 0.1s linear; }
+        .pfill { height: 100%; background: white; transition: width 0.1s linear; }
 
         /* Row 1: time + chapter */
         .pp-row1 { display: flex; align-items: center; padding: 8px 16px 2px; gap: 8px; }
@@ -155,8 +155,8 @@
         .pp-skip svg { width: 22px; height: 22px; }
         .pp-skip-num { position: absolute; font-size: 8px; font-weight: 700; font-family: var(--font-b); }
 
-        .play-btn { width: 48px; height: 48px; border-radius: 50%; background: #3478F6; border: none; color: white; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.12s; flex-shrink: 0; }
-        .play-btn:hover { transform: scale(1.06); background: #2D6CE6; }
+        .play-btn { width: 48px; height: 48px; border-radius: 50%; background: #1A1A1A; border: none; color: white; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.12s; flex-shrink: 0; }
+        .play-btn:hover { transform: scale(1.06); background: #333; }
         .play-btn svg { width: 22px; height: 22px; }
 
         .pp-speed { background: transparent; border: 1px solid rgba(255,255,255,0.25); color: rgba(255,255,255,0.75); border-radius: 14px; padding: 4px 10px; font-size: 12px; font-weight: 600; font-family: var(--font-b); cursor: pointer; white-space: nowrap; appearance: none; -webkit-appearance: none; }
@@ -456,8 +456,8 @@ async function playCurrentChunk() {
         audio.playbackRate = currentSpeed;
         await audio.play();
         isPlaying = true;
-        updatePlayButton();
         showPlayLoading(false);
+        updatePlayButton();
         startHighlightLoop();
 
         // Pré-carregar word positions da página do chunk atual (para highlight no PDF)
@@ -482,8 +482,11 @@ function updatePlayButton() {
 }
 function showPlayLoading(on) {
     const b = document.getElementById('playBtn');
-    if(on) b.innerHTML='<div class="loading-spinner" style="border-top-color:white;border-color:rgba(255,255,255,0.3)"></div>';
-    else b.innerHTML=`<svg id="playIcon" viewBox="0 0 24 24" fill="currentColor" style="display:${isPlaying?'none':'block'}"><polygon points="5 3 19 12 5 21 5 3"/></svg><svg id="pauseIcon" viewBox="0 0 24 24" fill="currentColor" style="display:${isPlaying?'block':'none'}"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>`;
+    if (on) {
+        b.innerHTML = '<div class="loading-spinner" style="width:20px;height:20px;border:2px solid rgba(255,255,255,0.3);border-top-color:white;border-radius:50%;animation:spin 0.6s linear infinite"></div>';
+    } else {
+        b.innerHTML = `<svg id="playIcon" viewBox="0 0 24 24" fill="currentColor" style="display:${isPlaying ? 'none' : 'block'}"><polygon points="8 5 20 12 8 19 8 5"/></svg><svg id="pauseIcon" viewBox="0 0 24 24" fill="currentColor" style="display:${isPlaying ? 'block' : 'none'}"><rect x="6" y="5" width="4" height="14"/><rect x="14" y="5" width="4" height="14"/></svg>`;
+    }
 }
 
 // === HIGHLIGHT ===
@@ -679,9 +682,23 @@ function renderSidebar() {
     }
 }
 
-function goToPage(page) {
+async function goToPage(page) {
+    // Scrollar para a página
     const el = document.getElementById(`pdf-page-${page}`);
     if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+    // Encontrar o chunk mais próximo desta página
+    let bestChunk = 0;
+    for (let i = 0; i < currentChunks.length; i++) {
+        if (currentChunks[i].page <= page) bestChunk = i;
+    }
+
+    // Mudar para o chunk e iniciar leitura
+    if (bestChunk !== currentChunkIndex) {
+        currentChunkIndex = bestChunk;
+        updateUI();
+    }
+    await playCurrentChunk();
 }
 
 // === PDF WORD POSITIONS + HIGHLIGHT ===
@@ -879,8 +896,8 @@ function setupPdfClickToRead(pageNum) {
         // Iniciar play
         await audio.play();
         isPlaying = true;
-        updatePlayButton();
         showPlayLoading(false);
+        updatePlayButton();
         startHighlightLoop();
 
         // Prefetch next
