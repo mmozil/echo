@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Echo — Seus documentos ganham voz</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.9.155/pdf.min.mjs" type="module"></script>
     <style>
         @font-face { font-family: "SF Pro Display"; src: url("/static/fonts/SF-Pro-Display-Regular.otf") format("opentype"); font-weight: 400; font-display: swap; }
         @font-face { font-family: "SF Pro Display"; src: url("/static/fonts/SF-Pro-Display-Medium.otf") format("opentype"); font-weight: 500; font-display: swap; }
@@ -23,6 +24,14 @@
             --font-m: "JetBrains Mono", "SF Mono", monospace;
         }
 
+        /* Dark theme */
+        [data-theme="dark"] {
+            --ink: #E8E8E8; --charcoal: #D4D4D4; --slate: #94A3B8; --mist: #64748B;
+            --cloud: #1E293B; --snow: #0F172A; --white: #1E293B; --border: #334155;
+            --accent: #E8E8E8; --accent-light: #1E293B;
+            --highlight: #1E3A5F; --highlight-spoken: #475569;
+        }
+
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: var(--font-b); background: var(--snow); color: var(--ink); min-height: 100vh; -webkit-font-smoothing: antialiased; }
 
@@ -38,8 +47,8 @@
         .hdr-right { display: flex; align-items: center; gap: 10px; }
         .user-name { font-size: 12px; color: var(--slate); }
         .btn { display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: 8px; font-size: 12px; font-weight: 500; border: none; cursor: pointer; transition: all 0.15s; font-family: var(--font-b); }
-        .btn-primary { background: var(--ink); color: white; }
-        .btn-primary:hover { background: #000; }
+        .btn-primary { background: var(--ink); color: var(--snow); }
+        .btn-primary:hover { opacity: 0.85; }
         .btn-ghost { background: transparent; color: var(--slate); border: 1px solid var(--border); }
         .btn-ghost:hover { background: var(--cloud); }
         .btn-icon { width: 30px; height: 30px; padding: 0; display: flex; align-items: center; justify-content: center; border-radius: 50%; border: none; background: transparent; color: var(--slate); cursor: pointer; }
@@ -74,8 +83,8 @@
         .reader { display: none; position: fixed; inset: 0; z-index: 200; background: var(--white); flex-direction: column; }
         .reader.active { display: flex; }
 
-        .reader-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 20px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
-        .reader-title { font-family: var(--font-d); font-size: 14px; font-weight: 600; flex: 1; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin: 0 16px; }
+        .reader-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 20px; border-bottom: 1px solid var(--border); flex-shrink: 0; gap: 8px; background: var(--white); }
+        .reader-title { font-family: var(--font-d); font-size: 14px; font-weight: 600; flex: 1; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin: 0 8px; }
         .reader-back { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--slate); cursor: pointer; background: none; border: none; font-family: var(--font-b); }
         .reader-back:hover { color: var(--ink); }
 
@@ -83,6 +92,20 @@
         .view-toggle { display: flex; background: var(--cloud); border-radius: 8px; padding: 3px; gap: 2px; }
         .view-toggle-btn { padding: 5px 12px; border-radius: 6px; font-size: 12px; font-weight: 500; border: none; cursor: pointer; background: transparent; color: var(--slate); font-family: var(--font-b); transition: all 0.15s; }
         .view-toggle-btn.active { background: var(--white); color: var(--ink); box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+
+        /* Page indicator */
+        .page-indicator { display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--slate); flex-shrink: 0; }
+        .page-indicator input { width: 36px; text-align: center; border: 1px solid var(--border); border-radius: 4px; padding: 2px 4px; font-size: 12px; font-family: var(--font-m); background: var(--snow); color: var(--ink); }
+        .page-indicator input:focus { outline: none; border-color: var(--ink); }
+
+        /* Search bar */
+        .search-bar { display: none; align-items: center; gap: 8px; padding: 8px 20px; border-bottom: 1px solid var(--border); background: var(--snow); }
+        .search-bar.active { display: flex; }
+        .search-bar input { flex: 1; padding: 6px 12px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px; font-family: var(--font-b); background: var(--white); color: var(--ink); }
+        .search-bar input:focus { outline: none; border-color: var(--ink); }
+        .search-results-count { font-size: 11px; color: var(--mist); white-space: nowrap; }
+        .search-nav-btn { width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; border: none; background: transparent; color: var(--slate); cursor: pointer; border-radius: 4px; }
+        .search-nav-btn:hover { background: var(--cloud); }
 
         /* Content area */
         .reader-content { flex: 1; overflow: hidden; display: flex; background: var(--snow); }
@@ -104,19 +127,23 @@
         .thumb-item { cursor: pointer; border-radius: 4px; overflow: hidden; border: 2px solid transparent; transition: border-color 0.15s; position: relative; }
         .thumb-item:hover { border-color: var(--mist); }
         .thumb-item.active { border-color: var(--ink); }
-        .thumb-item img { width: 100%; display: block; }
+        .thumb-item canvas { width: 100%; display: block; }
         .thumb-num { position: absolute; bottom: 2px; right: 4px; font-size: 9px; color: var(--mist); background: rgba(255,255,255,0.8); padding: 1px 4px; border-radius: 3px; }
 
-        /* PDF view */
+        /* PDF view - canvas-based */
         .pdf-main { flex: 1; overflow-y: auto; display: flex; flex-direction: column; align-items: center; padding: 24px; gap: 8px; }
         .pdf-main.hidden { display: none; }
         .pdf-page { max-width: 700px; width: 100%; border-radius: 4px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); background: white; position: relative; cursor: pointer; }
-        .pdf-page img { width: 100%; display: block; border-radius: 4px; pointer-events: none; }
+        .pdf-page canvas { width: 100%; display: block; border-radius: 4px; }
         .pdf-page-num { text-align: center; font-size: 11px; color: var(--mist); padding: 6px 0 16px; }
 
         /* Highlight overlay no PDF */
         .pdf-highlight { position: absolute; background: rgba(59,130,246,0.35); pointer-events: none; border-radius: 2px; z-index: 2; }
         .pdf-hover-line { position: absolute; left: 0; right: 0; background: rgba(59,130,246,0.1); pointer-events: none; z-index: 1; transition: all 0.1s; }
+
+        /* Search highlight no PDF */
+        .pdf-search-highlight { position: absolute; background: rgba(255, 200, 0, 0.4); pointer-events: none; border-radius: 2px; z-index: 3; }
+        .pdf-search-highlight.current { background: rgba(255, 140, 0, 0.6); }
 
         /* Text view */
         .text-view { width: 100%; max-width: 680px; height: 100%; overflow-y: auto; padding: 32px 40px; scroll-behavior: smooth; }
@@ -127,16 +154,16 @@
         .text-view .word.active { background: var(--highlight); padding: 1px 2px; }
         .text-view .word.spoken { color: var(--ink); }
 
-        /* === PLAYER BAR — Speechify replica === */
-        .player-bar { flex-shrink: 0; padding: 0 20px 14px; pointer-events: none; }
+        /* === PLAYER BAR === */
+        .player-bar { flex-shrink: 0; padding: 0 20px 14px; pointer-events: none; transition: opacity 0.3s, transform 0.3s; }
+        .player-bar.auto-hidden { opacity: 0; transform: translateY(10px); pointer-events: none; }
+        .player-bar:hover { opacity: 1 !important; transform: translateY(0) !important; }
         .player-pill { pointer-events: all; background: #2C2C2E; color: white; border-radius: 16px; max-width: 440px; margin: 0 auto; box-shadow: 0 6px 28px rgba(0,0,0,0.25); overflow: hidden; }
 
-        /* Progress bar topo */
         .pp-progress { height: 2px; background: rgba(255,255,255,0.1); cursor: pointer; }
         .pp-progress:hover { height: 3px; }
         .pfill { height: 100%; background: white; transition: width 0.1s linear; }
 
-        /* Row 1: time + chapter */
         .pp-row1 { display: flex; align-items: center; padding: 8px 16px 2px; gap: 8px; }
         .pp-time { font-size: 11px; font-family: var(--font-m); color: rgba(255,255,255,0.45); white-space: nowrap; min-width: 44px; }
         .pp-time.r { text-align: right; }
@@ -144,7 +171,6 @@
         .pp-chapter:hover { color: white; }
         .pp-chapter svg { width: 12px; height: 12px; flex-shrink: 0; opacity: 0.5; }
 
-        /* Row 2: controls */
         .pp-row2 { display: flex; align-items: center; justify-content: center; padding: 4px 16px 10px; gap: 16px; }
 
         .pp-voice { width: 28px; height: 28px; border-radius: 50%; border: none; background: transparent; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 18px; padding: 0; }
@@ -163,12 +189,37 @@
         .pp-speed:hover { border-color: rgba(255,255,255,0.5); color: white; }
         .pp-speed option { background: #2C2C2E; color: white; }
 
-        .pb-select { display: none; }
+        /* Scroll to listening button */
+        .scroll-to-listening { position: fixed; bottom: 90px; right: 24px; z-index: 250; background: var(--white); color: var(--ink); border: 1px solid var(--border); border-radius: 10px; padding: 8px 14px; font-size: 12px; font-weight: 500; font-family: var(--font-b); cursor: pointer; display: none; align-items: center; gap: 6px; box-shadow: 0 4px 16px rgba(0,0,0,0.12); transition: all 0.2s; }
+        .scroll-to-listening:hover { background: var(--cloud); }
+        .scroll-to-listening.visible { display: flex; }
+
+        /* === SETTINGS PANEL === */
+        .settings-overlay { display: none; position: fixed; inset: 0; z-index: 300; background: rgba(0,0,0,0.3); }
+        .settings-overlay.active { display: flex; justify-content: flex-end; }
+        .settings-panel { width: 320px; height: 100%; background: var(--white); border-left: 1px solid var(--border); padding: 0; overflow-y: auto; animation: slideIn 0.2s; }
+        @keyframes slideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
+        .settings-header { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid var(--border); }
+        .settings-header h3 { font-family: var(--font-d); font-size: 16px; font-weight: 600; }
+        .settings-section { padding: 16px 20px; border-bottom: 1px solid var(--border); }
+        .settings-section h4 { font-size: 12px; font-weight: 600; color: var(--slate); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px; }
+        .setting-row { display: flex; align-items: center; justify-content: space-between; padding: 8px 0; }
+        .setting-label { font-size: 13px; font-weight: 500; }
+        .setting-desc { font-size: 11px; color: var(--mist); margin-top: 2px; }
+        .toggle-switch { position: relative; width: 40px; height: 22px; flex-shrink: 0; }
+        .toggle-switch input { opacity: 0; width: 0; height: 0; }
+        .toggle-slider { position: absolute; inset: 0; background: var(--border); border-radius: 11px; cursor: pointer; transition: 0.2s; }
+        .toggle-slider::before { content: ''; position: absolute; width: 18px; height: 18px; left: 2px; bottom: 2px; background: white; border-radius: 50%; transition: 0.2s; }
+        .toggle-switch input:checked + .toggle-slider { background: var(--ink); }
+        .toggle-switch input:checked + .toggle-slider::before { transform: translateX(18px); }
+        .theme-btns { display: flex; gap: 8px; }
+        .theme-btn { padding: 6px 14px; border-radius: 6px; border: 1px solid var(--border); background: transparent; color: var(--slate); font-size: 12px; font-weight: 500; cursor: pointer; font-family: var(--font-b); }
+        .theme-btn.active { background: var(--ink); color: var(--snow); border-color: var(--ink); }
 
         .loading-spinner { width: 18px; height: 18px; border: 2px solid var(--border); border-top-color: var(--ink); border-radius: 50%; animation: spin 0.6s linear infinite; }
         @keyframes spin { to { transform: rotate(360deg); } }
 
-        .toast { position: fixed; bottom: 80px; right: 24px; background: var(--ink); color: white; padding: 10px 18px; border-radius: 8px; font-size: 12px; box-shadow: 0 4px 16px rgba(0,0,0,0.15); z-index: 1000; transform: translateY(60px); opacity: 0; transition: all 0.3s; }
+        .toast { position: fixed; bottom: 80px; right: 24px; background: var(--ink); color: var(--snow); padding: 10px 18px; border-radius: 8px; font-size: 12px; box-shadow: 0 4px 16px rgba(0,0,0,0.15); z-index: 1000; transform: translateY(60px); opacity: 0; transition: all 0.3s; }
         .toast.show { transform: translateY(0); opacity: 1; }
 
         .library-view.hidden { display: none; }
@@ -180,7 +231,9 @@
             .text-view { padding: 20px; }
             .text-view p { font-size: 16px; }
             .player-bar { padding: 10px 14px; }
-            .pdf-view { padding: 12px; }
+            .pdf-main { padding: 12px; }
+            .settings-panel { width: 100%; }
+            .reader-header { padding: 8px 12px; }
         }
     </style>
 </head>
@@ -214,33 +267,62 @@
 <!-- READER (full screen overlay) -->
 <div class="reader" id="reader">
     <div class="reader-header">
-        <div style="display:flex;align-items:center;gap:8px">
+        <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
             <button class="reader-back" onclick="closeReader()">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
                 Biblioteca
             </button>
-            <button class="btn-icon" onclick="toggleSidebar()" title="Navegação" style="width:28px;height:28px">
+            <button class="btn-icon" onclick="toggleSidebar()" title="Navegacao" style="width:28px;height:28px">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="15" y2="12"/><line x1="3" y1="18" x2="18" y2="18"/></svg>
+            </button>
+            <button class="btn-icon" onclick="toggleSearch()" title="Buscar (Ctrl+F)" style="width:28px;height:28px">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            </button>
+            <button class="btn-icon" onclick="openSettings()" title="Configuracoes" style="width:28px;height:28px">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
             </button>
         </div>
         <div class="reader-title" id="readerTitle"></div>
-        <div class="view-toggle">
-            <button class="view-toggle-btn active" id="togglePdf" onclick="setView('pdf')">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
-                PDF
-            </button>
-            <button class="view-toggle-btn" id="toggleText" onclick="setView('text')">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px"><line x1="17" y1="10" x2="3" y2="10"/><line x1="21" y1="6" x2="3" y2="6"/><line x1="21" y1="14" x2="3" y2="14"/><line x1="17" y1="18" x2="3" y2="18"/></svg>
-                Texto
-            </button>
+        <div style="display:flex;align-items:center;gap:12px;flex-shrink:0">
+            <div class="page-indicator">
+                <input type="number" id="pageInput" min="1" value="1" onchange="goToPageInput(this.value)" onkeydown="if(event.key==='Enter')this.blur()">
+                <span>/</span>
+                <span id="totalPages">0</span>
+            </div>
+            <div class="view-toggle">
+                <button class="view-toggle-btn active" id="togglePdf" onclick="setView('pdf')">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+                    PDF
+                </button>
+                <button class="view-toggle-btn" id="toggleText" onclick="setView('text')">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px"><line x1="17" y1="10" x2="3" y2="10"/><line x1="21" y1="6" x2="3" y2="6"/><line x1="21" y1="14" x2="3" y2="14"/><line x1="17" y1="18" x2="3" y2="18"/></svg>
+                    Texto
+                </button>
+            </div>
         </div>
+    </div>
+
+    <!-- Search bar -->
+    <div class="search-bar" id="searchBar">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--mist)" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="text" id="searchInput" placeholder="Buscar no documento..." onkeydown="if(event.key==='Enter')doSearch()">
+        <span class="search-results-count" id="searchCount"></span>
+        <button class="search-nav-btn" onclick="searchNav(-1)" title="Anterior">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="18 15 12 9 6 15"/></svg>
+        </button>
+        <button class="search-nav-btn" onclick="searchNav(1)" title="Proximo">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+        <button class="btn-icon" onclick="toggleSearch()" style="width:24px;height:24px">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
     </div>
 
     <div class="reader-content">
         <div class="reader-sidebar" id="readerSidebar">
             <div class="sidebar-tabs">
-                <button class="sidebar-tab active" onclick="setSidebarTab('toc')">Conteúdo</button>
-                <button class="sidebar-tab" onclick="setSidebarTab('thumbs')">Páginas</button>
+                <button class="sidebar-tab active" onclick="setSidebarTab('toc')">Conteudo</button>
+                <button class="sidebar-tab" onclick="setSidebarTab('thumbs')">Paginas</button>
             </div>
             <div class="sidebar-content" id="sidebarContent"></div>
         </div>
@@ -248,7 +330,7 @@
         <div class="text-view hidden" id="textView"></div>
     </div>
 
-    <div class="player-bar">
+    <div class="player-bar" id="playerBar">
         <div class="player-pill">
             <div class="pp-progress" id="pBar" onclick="seekAudio(event)"><div class="pfill" id="pFill" style="width:0%"></div></div>
             <div class="pp-row1">
@@ -260,7 +342,7 @@
                 <span class="pp-time r" id="totTime">0:00</span>
             </div>
             <div class="pp-row2">
-                <button class="pp-voice" id="voiceBtn" onclick="cycleVoice()" title="Trocar voz">🇧🇷</button>
+                <button class="pp-voice" id="voiceBtn" onclick="cycleVoice()" title="Trocar voz">&#x1F1E7;&#x1F1F7;</button>
                 <button class="pp-skip" onclick="skipBack()" title="Voltar 10s">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 4v6h6"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
                     <span class="pp-skip-num" style="top:13px;left:11px">10</span>
@@ -269,7 +351,7 @@
                     <svg id="playIcon" viewBox="0 0 24 24" fill="currentColor"><polygon points="8 5 20 12 8 19 8 5"/></svg>
                     <svg id="pauseIcon" viewBox="0 0 24 24" fill="currentColor" style="display:none"><rect x="6" y="5" width="4" height="14"/><rect x="14" y="5" width="4" height="14"/></svg>
                 </button>
-                <button class="pp-skip" onclick="skipForward()" title="Avançar 10s">
+                <button class="pp-skip" onclick="skipForward()" title="Avancar 10s">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
                     <span class="pp-skip-num" style="top:13px;right:11px">10</span>
                 </button>
@@ -284,21 +366,147 @@
             </div>
         </div>
     </div>
+
+    <!-- Scroll to listening -->
+    <button class="scroll-to-listening" id="scrollToListening" onclick="scrollToCurrentReading()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="7 13 12 18 17 13"/><polyline points="7 6 12 11 17 6"/></svg>
+        Ir para leitura
+    </button>
+</div>
+
+<!-- SETTINGS OVERLAY -->
+<div class="settings-overlay" id="settingsOverlay" onclick="if(event.target===this)closeSettings()">
+    <div class="settings-panel">
+        <div class="settings-header">
+            <h3>Configuracoes</h3>
+            <button class="btn-icon" onclick="closeSettings()">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+        </div>
+        <div class="settings-section">
+            <h4>Aparencia</h4>
+            <div class="setting-row">
+                <div>
+                    <div class="setting-label">Tema</div>
+                </div>
+                <div class="theme-btns">
+                    <button class="theme-btn" data-theme-val="light" onclick="setTheme('light')">Claro</button>
+                    <button class="theme-btn active" data-theme-val="system" onclick="setTheme('system')">Sistema</button>
+                    <button class="theme-btn" data-theme-val="dark" onclick="setTheme('dark')">Escuro</button>
+                </div>
+            </div>
+        </div>
+        <div class="settings-section">
+            <h4>Leitura</h4>
+            <div class="setting-row">
+                <div>
+                    <div class="setting-label">Highlight de sentenca</div>
+                    <div class="setting-desc">Destaca a palavra sendo lida</div>
+                </div>
+                <label class="toggle-switch">
+                    <input type="checkbox" id="settingHighlight" checked onchange="saveSetting('highlight',this.checked)">
+                    <span class="toggle-slider"></span>
+                </label>
+            </div>
+            <div class="setting-row">
+                <div>
+                    <div class="setting-label">Auto-play</div>
+                    <div class="setting-desc">Tocar ao abrir documento</div>
+                </div>
+                <label class="toggle-switch">
+                    <input type="checkbox" id="settingAutoplay" onchange="saveSetting('autoplay',this.checked)">
+                    <span class="toggle-slider"></span>
+                </label>
+            </div>
+            <div class="setting-row">
+                <div>
+                    <div class="setting-label">Click to Listen</div>
+                    <div class="setting-desc">Clicar no texto para iniciar leitura</div>
+                </div>
+                <label class="toggle-switch">
+                    <input type="checkbox" id="settingClickToListen" checked onchange="saveSetting('clickToListen',this.checked)">
+                    <span class="toggle-slider"></span>
+                </label>
+            </div>
+            <div class="setting-row">
+                <div>
+                    <div class="setting-label">Auto-hide player</div>
+                    <div class="setting-desc">Esconder player quando parado</div>
+                </div>
+                <label class="toggle-switch">
+                    <input type="checkbox" id="settingAutoHide" onchange="saveSetting('autoHide',this.checked)">
+                    <span class="toggle-slider"></span>
+                </label>
+            </div>
+        </div>
+    </div>
 </div>
 
 <div class="toast" id="toast"></div>
 <audio id="audioPlayer"></audio>
 
+<script type="module">
+// === PDF.JS SETUP ===
+import * as pdfjsLib from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.9.155/pdf.min.mjs';
+pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.9.155/pdf.worker.min.mjs';
+window.pdfjsLib = pdfjsLib;
+</script>
+
 <script>
+// === STATE ===
 let currentDoc = null, currentChunks = [], currentChunkIndex = 0;
 let isPlaying = false, currentSpeed = 1;
 let wordBoundaries = [], boundaryToWordMap = [];
 let highlightInterval = null, currentView = 'pdf';
 let prefetchCache = {};
 let userScrolling = false, userScrollTimer = null, programmaticScroll = false;
+let pdfDoc = null; // PDF.js document instance
+let renderedPages = {}; // Track which pages are rendered
+let pageWordPositions = {}; // Cache word positions
+let playerIdleTimer = null;
 const audio = document.getElementById('audioPlayer');
 
+// === SETTINGS ===
+const defaultSettings = { theme: 'system', highlight: true, autoplay: false, clickToListen: true, autoHide: false };
+let settings = { ...defaultSettings, ...JSON.parse(localStorage.getItem('echo_settings') || '{}') };
+
+function saveSetting(key, val) { settings[key] = val; localStorage.setItem('echo_settings', JSON.stringify(settings)); if (key === 'theme') applyTheme(); if (key === 'autoHide') resetPlayerIdle(); }
+function applyTheme() {
+    const theme = settings.theme;
+    if (theme === 'system') { document.documentElement.removeAttribute('data-theme'); const dark = window.matchMedia('(prefers-color-scheme: dark)').matches; if (dark) document.documentElement.setAttribute('data-theme', 'dark'); }
+    else if (theme === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
+    else document.documentElement.removeAttribute('data-theme');
+    document.querySelectorAll('.theme-btn').forEach(b => b.classList.toggle('active', b.dataset.themeVal === theme));
+}
+function setTheme(t) { saveSetting('theme', t); }
+function loadSettings() {
+    applyTheme();
+    document.getElementById('settingHighlight').checked = settings.highlight;
+    document.getElementById('settingAutoplay').checked = settings.autoplay;
+    document.getElementById('settingClickToListen').checked = settings.clickToListen;
+    document.getElementById('settingAutoHide').checked = settings.autoHide;
+}
+function openSettings() { document.getElementById('settingsOverlay').classList.add('active'); }
+function closeSettings() { document.getElementById('settingsOverlay').classList.remove('active'); }
+window.openSettings = openSettings;
+window.closeSettings = closeSettings;
+window.setTheme = setTheme;
+window.saveSetting = saveSetting;
+
+// === PLAYER AUTO-HIDE ===
+function resetPlayerIdle() {
+    clearTimeout(playerIdleTimer);
+    const bar = document.getElementById('playerBar');
+    bar.classList.remove('auto-hidden');
+    if (settings.autoHide && !isPlaying) {
+        playerIdleTimer = setTimeout(() => { bar.classList.add('auto-hidden'); }, 3000);
+    }
+}
+
+// === INIT ===
+loadSettings();
 loadUser(); loadDocuments(); setupDragDrop();
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { if (settings.theme === 'system') applyTheme(); });
 
 async function loadUser() {
     try { const r = await fetch('/api/auth/me'); if (!r.ok) { window.location.href='/login'; return; } const d = await r.json(); document.getElementById('userName').textContent = d.name; } catch { window.location.href='/login'; }
@@ -318,9 +526,9 @@ async function handleFileUpload(file) {
     a.classList.add('uploading');
     a.innerHTML = '<div class="loading-spinner" style="margin:0 auto"></div><h3 style="margin-top:10px">Processando...</h3>';
     const fd = new FormData(); fd.append('file', file);
-    try { const r = await fetch('/api/documents',{method:'POST',body:fd}); const d = await r.json(); if(!r.ok) throw new Error(d.detail); showToast(`"${d.title}" — ${d.total_chunks} trechos`); loadDocuments(); }
+    try { const r = await fetch('/api/documents',{method:'POST',body:fd}); const d = await r.json(); if(!r.ok) throw new Error(d.detail); showToast(`"${d.title}" -- ${d.total_chunks} trechos`); loadDocuments(); }
     catch(e) { showToast(e.message); }
-    finally { a.classList.remove('uploading'); a.innerHTML = '<div class="upload-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg></div><h3>Arraste um PDF ou clique para enviar</h3><p>Livros, artigos, apostilas — o Antonio lê para você</p>'; }
+    finally { a.classList.remove('uploading'); a.innerHTML = '<div class="upload-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg></div><h3>Arraste um PDF ou clique para enviar</h3><p>Livros, artigos, apostilas -- o Antonio le para voce</p>'; }
     document.getElementById('fileInput').value = '';
 }
 
@@ -341,7 +549,7 @@ function renderDocuments(docs) {
                 ${pct>0?`<div class="book-progress-bar"><div class="book-progress-fill" style="width:${pct}%"></div></div>`:''}
             </div>
             <div class="book-title">${doc.title}</div>
-            <div class="book-meta">${doc.total_pages} pág.</div>
+            <div class="book-meta">${doc.total_pages} pag.</div>
         </div>`;
     }).join('')}</div>`;
 }
@@ -352,72 +560,175 @@ async function deleteDoc(id,title) { if(!confirm(`Remover "${title}"?`)) return;
 async function openDocument(docId) {
     const r = await fetch(`/api/documents/${docId}`); const d = await r.json();
     currentDoc = d.document; currentChunks = d.chunks; currentChunkIndex = d.progress?.current_chunk||0;
-    prefetchCache = {};
+    prefetchCache = {}; renderedPages = {}; pageWordPositions = {};
 
     document.getElementById('readerTitle').textContent = currentDoc.title;
-    const cl=document.getElementById('chunkLabel'); if(cl) cl.textContent=`${currentChunkIndex+1} / ${currentChunks.length}`;
+    document.getElementById('totalPages').textContent = currentDoc.total_pages;
+    document.getElementById('pageInput').max = currentDoc.total_pages;
 
     document.getElementById('reader').classList.add('active');
     document.getElementById('libraryView').classList.add('hidden');
     document.querySelector('.header').style.display = 'none';
 
-    // Carregar TOC, PDF pages e texto
-    pageWordPositions = {};
+    // Load PDF.js document + TOC + text
     loadToc();
-    loadPdfPages();
+    await loadPdfDocument();
     await loadChunkText(currentChunkIndex);
 
-    // Detectar scroll manual em TODOS os containers scrolláveis
+    // Scroll handlers
     const scrollHandler = () => { if(programmaticScroll) return; userScrolling = true; clearTimeout(userScrollTimer); userScrollTimer = setTimeout(() => { userScrolling = false; }, 5000); };
-    document.getElementById('pdfView').addEventListener('scroll', scrollHandler, {passive:true});
-    document.getElementById('pdfView').addEventListener('wheel', scrollHandler, {passive:true});
-    document.getElementById('pdfView').addEventListener('touchmove', scrollHandler, {passive:true});
+    const pdfView = document.getElementById('pdfView');
+    pdfView.addEventListener('scroll', scrollHandler, {passive:true});
+    pdfView.addEventListener('wheel', scrollHandler, {passive:true});
+    pdfView.addEventListener('touchmove', scrollHandler, {passive:true});
     document.getElementById('textView').addEventListener('scroll', scrollHandler, {passive:true});
     document.getElementById('textView').addEventListener('wheel', scrollHandler, {passive:true});
 
-    // Atualizar player
-    updateChapterDisplay();
+    // Track current page from scroll
+    pdfView.addEventListener('scroll', updateCurrentPageFromScroll, {passive:true});
 
-    // Pré-gerar áudio dos primeiros 3 chunks
-    prefetchChunks(currentChunkIndex, 3);
+    updateChapterDisplay();
+    prefetchChunks(currentChunkIndex, 5);
+    resetPlayerIdle();
+
+    if (settings.autoplay) { setTimeout(() => playCurrentChunk(), 500); }
 }
+
+// === PDF.JS CLIENT-SIDE RENDERING ===
+async function loadPdfDocument() {
+    const pv = document.getElementById('pdfView');
+    pv.innerHTML = '<div style="padding:40px;text-align:center"><div class="loading-spinner" style="margin:0 auto 12px"></div><p style="font-size:13px;color:var(--mist)">Carregando documento...</p></div>';
+
+    try {
+        // Wait for pdfjsLib to be available
+        let retries = 0;
+        while (!window.pdfjsLib && retries < 50) { await new Promise(r => setTimeout(r, 100)); retries++; }
+        if (!window.pdfjsLib) throw new Error('PDF.js nao carregou');
+
+        const url = `/api/documents/${currentDoc.id}/pdf`;
+        pdfDoc = await window.pdfjsLib.getDocument(url).promise;
+
+        // Create page containers
+        let html = '';
+        for (let p = 1; p <= pdfDoc.numPages; p++) {
+            html += `<div class="pdf-page" id="pdf-page-${p}" data-page="${p}"><canvas id="pdf-canvas-${p}"></canvas></div><div class="pdf-page-num">Pagina ${p} de ${pdfDoc.numPages}</div>`;
+        }
+        pv.innerHTML = html;
+
+        // Setup IntersectionObserver for lazy rendering
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    const page = parseInt(entry.target.dataset.page);
+                    renderPdfPage(page);
+                }
+            });
+        }, { root: pv, rootMargin: '200px' });
+
+        for (let p = 1; p <= pdfDoc.numPages; p++) {
+            const el = document.getElementById(`pdf-page-${p}`);
+            if (el) observer.observe(el);
+            // Setup click-to-read
+            if (settings.clickToListen) setupPdfClickToRead(p);
+        }
+
+        // Render first visible pages immediately
+        const chunk = currentChunks[currentChunkIndex];
+        const startPage = chunk ? chunk.page : 1;
+        for (let p = Math.max(1, startPage - 1); p <= Math.min(pdfDoc.numPages, startPage + 2); p++) {
+            renderPdfPage(p);
+        }
+
+        // Scroll to current position
+        if (startPage > 1) {
+            setTimeout(() => {
+                const el = document.getElementById(`pdf-page-${startPage}`);
+                if (el) el.scrollIntoView({ behavior: 'auto' });
+            }, 100);
+        }
+
+        // Pre-load word positions for nearby pages
+        for (let p = Math.max(1, startPage - 1); p <= Math.min(currentDoc.total_pages, startPage + 3); p++) {
+            loadPageWords(p);
+        }
+
+    } catch(e) {
+        // Fallback to server-side rendering
+        console.warn('PDF.js falhou, usando fallback server-side:', e);
+        loadPdfPagesFallback();
+    }
+}
+
+async function renderPdfPage(pageNum) {
+    if (renderedPages[pageNum]) return;
+    renderedPages[pageNum] = true;
+
+    try {
+        const page = await pdfDoc.getPage(pageNum);
+        const scale = 1.5; // High quality
+        const viewport = page.getViewport({ scale });
+        const canvas = document.getElementById(`pdf-canvas-${pageNum}`);
+        if (!canvas) return;
+
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+        const ctx = canvas.getContext('2d');
+
+        await page.render({ canvasContext: ctx, viewport }).promise;
+    } catch(e) {
+        console.warn(`Erro ao renderizar pagina ${pageNum}:`, e);
+        renderedPages[pageNum] = false;
+    }
+}
+
+// Fallback: server-side rendering (caso PDF.js falhe)
+function loadPdfPagesFallback() {
+    const pv = document.getElementById('pdfView');
+    if (!currentDoc) return;
+    let html = '';
+    for (let p = 1; p <= currentDoc.total_pages; p++) {
+        html += `<div class="pdf-page" id="pdf-page-${p}" data-page="${p}"><img src="/api/documents/${currentDoc.id}/pages/${p}.png" alt="Pagina ${p}" loading="lazy" style="width:100%;display:block;border-radius:4px;pointer-events:none"></div><div class="pdf-page-num">Pagina ${p} de ${currentDoc.total_pages}</div>`;
+    }
+    pv.innerHTML = html;
+    for (let p = 1; p <= currentDoc.total_pages; p++) {
+        if (settings.clickToListen) setupPdfClickToRead(p);
+    }
+    const chunk = currentChunks[currentChunkIndex];
+    if (chunk && chunk.page > 1) {
+        setTimeout(() => { const el = document.getElementById(`pdf-page-${chunk.page}`); if (el) el.scrollIntoView({ behavior: 'auto' }); }, 100);
+    }
+}
+
+// Track page from scroll position
+function updateCurrentPageFromScroll() {
+    const pv = document.getElementById('pdfView');
+    const pages = pv.querySelectorAll('.pdf-page');
+    const scrollTop = pv.scrollTop + pv.clientHeight / 3;
+    let currentPage = 1;
+    for (const page of pages) {
+        if (page.offsetTop <= scrollTop) {
+            currentPage = parseInt(page.dataset.page);
+        } else break;
+    }
+    document.getElementById('pageInput').value = currentPage;
+}
+
+function goToPageInput(val) {
+    const page = parseInt(val);
+    if (page >= 1 && page <= (currentDoc?.total_pages || 0)) {
+        scrollPdfToPage(page);
+    }
+}
+window.goToPageInput = goToPageInput;
 
 function closeReader() {
     stopAudio();
+    pdfDoc = null; renderedPages = {};
     document.getElementById('reader').classList.remove('active');
     document.getElementById('libraryView').classList.remove('hidden');
     document.querySelector('.header').style.display = 'flex';
+    document.getElementById('searchBar').classList.remove('active');
     loadDocuments();
-}
-
-function loadPdfPages() {
-    const pv = document.getElementById('pdfView');
-    if (!currentDoc) return;
-
-    let html = '';
-    for (let p = 1; p <= currentDoc.total_pages; p++) {
-        html += `<div class="pdf-page" id="pdf-page-${p}"><img src="/api/documents/${currentDoc.id}/pages/${p}.png" alt="Página ${p}" loading="lazy"></div><div class="pdf-page-num">Página ${p} de ${currentDoc.total_pages}</div>`;
-    }
-    pv.innerHTML = html;
-
-    // Setup click-to-read em cada página e pré-carregar word positions
-    for (let p = 1; p <= currentDoc.total_pages; p++) {
-        setupPdfClickToRead(p);
-        // Pré-carregar words das primeiras páginas e da página do chunk atual
-        const chunk = currentChunks[currentChunkIndex];
-        if (p <= 3 || (chunk && Math.abs(p - chunk.page) <= 2)) {
-            loadPageWords(p);
-        }
-    }
-
-    // Scroll para a página do chunk atual
-    const chunk = currentChunks[currentChunkIndex];
-    if (chunk && chunk.page > 1) {
-        setTimeout(() => {
-            const el = document.getElementById(`pdf-page-${chunk.page}`);
-            if (el) el.scrollIntoView({ behavior: 'auto' });
-        }, 100);
-    }
 }
 
 function scrollPdfToPage(page) {
@@ -433,23 +744,49 @@ function setView(v) {
     document.getElementById('textView').classList.toggle('hidden', v!=='text');
 }
 
+// === SCROLL TO LISTENING ===
+function scrollToCurrentReading() {
+    userScrolling = false;
+    if (currentView === 'pdf' && currentChunks[currentChunkIndex]) {
+        scrollPdfToPage(currentChunks[currentChunkIndex].page);
+    } else if (currentView === 'text') {
+        const active = document.querySelector('#textView .word.active');
+        if (active) active.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+    document.getElementById('scrollToListening').classList.remove('visible');
+}
+window.scrollToCurrentReading = scrollToCurrentReading;
+
+function showScrollToListening() {
+    if (isPlaying && userScrolling) {
+        document.getElementById('scrollToListening').classList.add('visible');
+    } else {
+        document.getElementById('scrollToListening').classList.remove('visible');
+    }
+}
+
 // === AUDIO ===
 async function togglePlay() { if(isPlaying) pauseAudio(); else await playCurrentChunk(); }
 
 async function playCurrentChunk() {
     if (!currentDoc) return;
     stopHighlightLoop();
+    lastPdfHighlightIdx = -1; // Reset highlight tracking
     showPlayLoading(true);
     try {
-        // 1 request: retorna audio_url + boundaries + text inline
         let data;
         if (prefetchCache[currentChunkIndex]) { data = prefetchCache[currentChunkIndex]; delete prefetchCache[currentChunkIndex]; }
         else { const r = await fetch(`/api/documents/${currentDoc.id}/chunks/${currentChunkIndex}/audio`,{method:'POST'}); data = await r.json(); if(!data.audio_url) throw new Error(data.detail||'Erro'); }
 
-        // Boundaries e texto vêm inline — sem requests extras
         wordBoundaries = data.boundaries || [];
         if (data.text) renderTextWithWords(data.text);
+        // Esperar DOM atualizar antes de construir boundary map
+        await new Promise(r => requestAnimationFrame(r));
         buildBoundaryMap();
+
+        // Pre-load word positions ANTES do play (para highlight funcionar imediatamente)
+        const chunk = currentChunks[currentChunkIndex];
+        if (chunk) await loadPageWords(chunk.page);
 
         audio.src = data.audio_url;
         audio.playbackRate = currentSpeed;
@@ -459,22 +796,31 @@ async function playCurrentChunk() {
         updatePlayButton();
         startHighlightLoop();
         updateChapterDisplay();
+        resetPlayerIdle();
 
-        // Pré-carregar word positions da página do chunk atual (para highlight no PDF)
-        const chunk = currentChunks[currentChunkIndex];
-        if (chunk) loadPageWords(chunk.page);
-
-        // Prefetch next
-        const nx = currentChunkIndex+1;
-        if (nx<currentChunks.length && !prefetchCache[nx]) {
-            fetch(`/api/documents/${currentDoc.id}/chunks/${nx}/audio`,{method:'POST'}).then(r=>r.json()).then(d=>{ if(d.audio_url) prefetchCache[nx]=d; }).catch(()=>{});
+        // Prefetch next chunks (5 ahead) e word positions das paginas seguintes
+        prefetchAhead(currentChunkIndex);
+        if (chunk) {
+            for (let p = chunk.page; p <= Math.min(chunk.page + 3, currentDoc.total_pages); p++) {
+                loadPageWords(p);
+            }
         }
+
         fetch(`/api/documents/${currentDoc.id}/progress?current_chunk=${currentChunkIndex}`,{method:'PUT'});
     } catch(e) { showPlayLoading(false); showToast(e.message); }
 }
 
-function pauseAudio() { audio.pause(); isPlaying=false; updatePlayButton(); stopHighlightLoop(); }
-function stopAudio() { audio.pause(); audio.src=''; isPlaying=false; updatePlayButton(); stopHighlightLoop(); wordBoundaries=[]; prefetchCache={}; }
+// Prefetch 5 chunks ahead
+function prefetchAhead(fromIdx) {
+    for (let i = fromIdx + 1; i <= Math.min(fromIdx + 5, currentChunks.length - 1); i++) {
+        if (!prefetchCache[i]) {
+            fetch(`/api/documents/${currentDoc.id}/chunks/${i}/audio`,{method:'POST'}).then(r=>r.json()).then(d=>{if(d.audio_url) prefetchCache[i]=d;}).catch(()=>{});
+        }
+    }
+}
+
+function pauseAudio() { audio.pause(); isPlaying=false; updatePlayButton(); stopHighlightLoop(); resetPlayerIdle(); }
+function stopAudio() { audio.pause(); audio.src=''; isPlaying=false; updatePlayButton(); stopHighlightLoop(); wordBoundaries=[]; prefetchCache={}; resetPlayerIdle(); }
 
 function updatePlayButton() {
     document.getElementById('playIcon').style.display = isPlaying?'none':'block';
@@ -512,6 +858,12 @@ function buildBoundaryMap() {
 
 function updateHighlight() {
     if (!wordBoundaries.length) return;
+
+    // Show/hide scroll-to-listening
+    showScrollToListening();
+
+    if (!settings.highlight) return;
+
     const ms = audio.currentTime*1000;
     const words = document.querySelectorAll('#textView .word');
     let abi = -1;
@@ -520,7 +872,7 @@ function updateHighlight() {
     const lsi = abi>0 ? boundaryToWordMap[abi-1] : -1;
     words.forEach((w,i) => { w.classList.toggle('active',i===awi); w.classList.toggle('spoken',i<=lsi&&i!==awi); });
 
-    // Auto-scroll text view (só se user não está scrollando)
+    // Auto-scroll text view
     if (awi>=0 && words[awi] && currentView==='text' && !userScrolling) {
         const tv = document.getElementById('textView');
         const wt = words[awi].offsetTop - tv.offsetTop;
@@ -528,33 +880,40 @@ function updateHighlight() {
         if (wt<ts+60 || wt>ts+th-80) tv.scrollTo({top:wt-th/3,behavior:'smooth'});
     }
 
-    // Scroll PDF view para a página do chunk atual
-    if (currentView==='pdf' && currentChunks[currentChunkIndex]) {
+    // PDF view: scroll to page
+    if (currentView==='pdf' && currentChunks[currentChunkIndex] && !userScrolling) {
         scrollPdfToPage(currentChunks[currentChunkIndex].page);
     }
+
+    // PDF highlight
+    updatePdfHighlight();
+}
+
+function renderTextWithWords(text) {
+    const tv = document.getElementById('textView');
+    const paras = text.split('\n\n').filter(p=>p.trim());
+    let wi=0, html='';
+    for (const p of paras) {
+        html += '<p>';
+        const tks = p.split(/(\s+)/);
+        for (const t of tks) { if(t.trim()) { html+=`<span class="word" data-idx="${wi}" onclick="seekToWord(${wi})">${t}</span>`; wi++; } else html+=t; }
+        html += '</p>';
+    }
+    tv.innerHTML = html;
 }
 
 async function loadChunkText(index) {
     try {
         const r = await fetch(`/api/documents/${currentDoc.id}/chunks/${index}/text`);
         const d = await r.json();
-        const tv = document.getElementById('textView');
-        const paras = d.text.split('\n\n').filter(p=>p.trim());
-        let wi=0, html='';
-        for (const p of paras) {
-            html += '<p>';
-            const tks = p.split(/(\s+)/);
-            for (const t of tks) { if(t.trim()) { html+=`<span class="word" data-idx="${wi}" onclick="seekToWord(${wi})">${t}</span>`; wi++; } else html+=t; }
-            html += '</p>';
-        }
-        tv.innerHTML = html;
+        renderTextWithWords(d.text);
     } catch {}
 }
 
 function seekToWord(wi) {
     let best=-1, bestD=Infinity;
     for(let bi=0;bi<boundaryToWordMap.length;bi++){const d=Math.abs(boundaryToWordMap[bi]-wi);if(d<bestD){bestD=d;best=bi;}}
-    if(best>=0&&wordBoundaries[best]){ audio.currentTime=wordBoundaries[best].offset_ms/1000; if(!isPlaying){audio.play();isPlaying=true;updatePlayButton();startHighlightLoop();} }
+    if(best>=0&&wordBoundaries[best]){ audio.currentTime=wordBoundaries[best].offset_ms/1000; if(!isPlaying){audio.play();isPlaying=true;updatePlayButton();startHighlightLoop();resetPlayerIdle();} }
 }
 
 audio.addEventListener('timeupdate', () => {
@@ -567,7 +926,7 @@ audio.addEventListener('timeupdate', () => {
 
 audio.addEventListener('ended', () => {
     stopHighlightLoop();
-    if(currentChunkIndex<currentChunks.length-1) nextChunk(); else { isPlaying=false; updatePlayButton(); showToast('Leitura concluída!'); }
+    if(currentChunkIndex<currentChunks.length-1) nextChunk(); else { isPlaying=false; updatePlayButton(); showToast('Leitura concluida!'); resetPlayerIdle(); }
 });
 
 function seekAudio(e) { if(!audio.duration || !isFinite(audio.duration)) return; const b=document.getElementById('pBar'),r=b.getBoundingClientRect(); audio.currentTime=((e.clientX-r.left)/r.width)*audio.duration; }
@@ -576,17 +935,9 @@ function setSpeed(s) { currentSpeed=s; audio.playbackRate=s; }
 function skipBack() { if(audio.src) audio.currentTime = Math.max(0, audio.currentTime - 10); }
 function skipForward() { if(audio.src) audio.currentTime = Math.min(audio.duration || 0, audio.currentTime + 10); }
 
-// Ciclar entre vozes pt-BR
-let voiceList = [];
-let voiceIdx = 0;
-const voiceFlags = { 'pt-BR': '🇧🇷', 'en-US': '🇺🇸', 'es-ES': '🇪🇸' };
-
+let voiceList = [], voiceIdx = 0, selectedVoice = 'pt-BR-AntonioNeural';
 async function cycleVoice() {
-    if (!voiceList.length) {
-        const r = await fetch('/api/voices?language=pt-BR');
-        const d = await r.json();
-        voiceList = d.voices || [];
-    }
+    if (!voiceList.length) { const r = await fetch('/api/voices?language=pt-BR'); const d = await r.json(); voiceList = d.voices || []; }
     if (!voiceList.length) return;
     voiceIdx = (voiceIdx + 1) % voiceList.length;
     selectedVoice = voiceList[voiceIdx].name;
@@ -598,7 +949,6 @@ async function cycleVoice() {
 function updateChapterDisplay() {
     const el = document.getElementById('ppChapterText');
     if (!el || !currentChunks.length) return;
-    // Encontrar nome do capítulo do TOC correspondente à página atual
     const chunk = currentChunks[currentChunkIndex];
     if (!chunk) return;
     const page = chunk.page;
@@ -616,12 +966,9 @@ async function prevChunk() { if(currentChunkIndex>0){currentChunkIndex--;updateU
 async function goToChunk(i) { currentChunkIndex=i; updateUI(); await playCurrentChunk(); }
 
 function updateUI() {
-    const cl=document.getElementById('chunkLabel'); if(cl) cl.textContent=`${currentChunkIndex+1} / ${currentChunks.length}`;
     updateChapterDisplay();
     loadChunkText(currentChunkIndex);
-    if (currentChunks[currentChunkIndex]) {
-        scrollPdfToPage(currentChunks[currentChunkIndex].page);
-    }
+    if (currentChunks[currentChunkIndex]) { scrollPdfToPage(currentChunks[currentChunkIndex].page); }
 }
 
 function fmt(s) {
@@ -637,9 +984,7 @@ function showToast(m){const t=document.getElementById('toast');t.textContent=m;t
 let tocData = [];
 let sidebarTab = 'toc';
 
-function toggleSidebar() {
-    document.getElementById('readerSidebar').classList.toggle('hidden');
-}
+function toggleSidebar() { document.getElementById('readerSidebar').classList.toggle('hidden'); }
 
 function setSidebarTab(tab) {
     sidebarTab = tab;
@@ -649,11 +994,7 @@ function setSidebarTab(tab) {
 
 async function loadToc() {
     if (!currentDoc) return;
-    try {
-        const r = await fetch(`/api/documents/${currentDoc.id}/toc`);
-        const d = await r.json();
-        tocData = d.toc || [];
-    } catch { tocData = []; }
+    try { const r = await fetch(`/api/documents/${currentDoc.id}/toc`); const d = await r.json(); tocData = d.toc || []; } catch { tocData = []; }
     renderSidebar();
 }
 
@@ -661,7 +1002,7 @@ function renderSidebar() {
     const sc = document.getElementById('sidebarContent');
     if (sidebarTab === 'toc') {
         if (!tocData.length) {
-            sc.innerHTML = '<div style="padding:20px;text-align:center;font-size:12px;color:var(--mist)">Sem índice disponível</div>';
+            sc.innerHTML = '<div style="padding:20px;text-align:center;font-size:12px;color:var(--mist)">Sem indice disponivel</div>';
             return;
         }
         sc.innerHTML = tocData.map((item, i) => `
@@ -671,38 +1012,104 @@ function renderSidebar() {
             </div>
         `).join('');
     } else {
-        // Thumbnails
+        // Thumbnails using PDF.js
         if (!currentDoc) return;
         let html = '<div class="thumb-grid">';
         for (let p = 1; p <= currentDoc.total_pages; p++) {
-            html += `<div class="thumb-item" onclick="goToPage(${p})"><img src="/api/documents/${currentDoc.id}/pages/${p}.png" loading="lazy" alt="p${p}"><div class="thumb-num">${p}</div></div>`;
+            html += `<div class="thumb-item" id="thumb-${p}" onclick="goToPage(${p})"><canvas id="thumb-canvas-${p}" style="width:100%;display:block"></canvas><div class="thumb-num">${p}</div></div>`;
         }
         html += '</div>';
         sc.innerHTML = html;
+        // Render thumbnails lazily
+        renderThumbnails();
+    }
+}
+
+async function renderThumbnails() {
+    if (!pdfDoc) return;
+    for (let p = 1; p <= Math.min(pdfDoc.numPages, 20); p++) {
+        try {
+            const page = await pdfDoc.getPage(p);
+            const scale = 0.3;
+            const viewport = page.getViewport({ scale });
+            const canvas = document.getElementById(`thumb-canvas-${p}`);
+            if (!canvas) continue;
+            canvas.width = viewport.width;
+            canvas.height = viewport.height;
+            await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+        } catch {}
     }
 }
 
 async function goToPage(page) {
-    // Scrollar para a página
-    const el = document.getElementById(`pdf-page-${page}`);
-    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-
-    // Encontrar o chunk mais próximo desta página
+    scrollPdfToPage(page);
+    // Find nearest chunk
     let bestChunk = 0;
     for (let i = 0; i < currentChunks.length; i++) {
         if (currentChunks[i].page <= page) bestChunk = i;
     }
-
-    // Mudar para o chunk e iniciar leitura
-    if (bestChunk !== currentChunkIndex) {
-        currentChunkIndex = bestChunk;
-        updateUI();
-    }
+    if (bestChunk !== currentChunkIndex) { currentChunkIndex = bestChunk; updateUI(); }
     await playCurrentChunk();
 }
 
+// === SEARCH ===
+let searchResults = [], searchCurrentIdx = -1;
+
+function toggleSearch() {
+    const bar = document.getElementById('searchBar');
+    bar.classList.toggle('active');
+    if (bar.classList.contains('active')) {
+        document.getElementById('searchInput').focus();
+    } else {
+        clearSearchHighlights();
+    }
+}
+
+// Ctrl+F shortcut
+document.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'f' && document.getElementById('reader').classList.contains('active')) {
+        e.preventDefault();
+        toggleSearch();
+    }
+});
+
+async function doSearch() {
+    const q = document.getElementById('searchInput').value.trim();
+    if (!q || !currentDoc) return;
+
+    const r = await fetch(`/api/documents/${currentDoc.id}/search?q=${encodeURIComponent(q)}`);
+    const d = await r.json();
+    searchResults = d.results;
+    searchCurrentIdx = searchResults.length > 0 ? 0 : -1;
+
+    document.getElementById('searchCount').textContent = searchResults.length > 0 ? `${searchCurrentIdx + 1} de ${searchResults.length}` : 'Sem resultados';
+
+    if (searchCurrentIdx >= 0) navigateToSearchResult();
+}
+
+function searchNav(dir) {
+    if (!searchResults.length) return;
+    searchCurrentIdx = (searchCurrentIdx + dir + searchResults.length) % searchResults.length;
+    document.getElementById('searchCount').textContent = `${searchCurrentIdx + 1} de ${searchResults.length}`;
+    navigateToSearchResult();
+}
+
+function navigateToSearchResult() {
+    if (searchCurrentIdx < 0 || !searchResults.length) return;
+    const result = searchResults[searchCurrentIdx];
+    scrollPdfToPage(result.page);
+    document.getElementById('pageInput').value = result.page;
+}
+
+function clearSearchHighlights() {
+    searchResults = [];
+    searchCurrentIdx = -1;
+    document.getElementById('searchCount').textContent = '';
+    document.getElementById('searchInput').value = '';
+    document.querySelectorAll('.pdf-search-highlight').forEach(h => h.remove());
+}
+
 // === PDF WORD POSITIONS + HIGHLIGHT ===
-let pageWordPositions = {}; // cache { pageNum: [{word, x0, y0, x1, y1}] }
 let currentHighlightPage = 0;
 
 async function loadPageWords(pageNum) {
@@ -715,82 +1122,142 @@ async function loadPageWords(pageNum) {
     } catch { return []; }
 }
 
-function highlightWordOnPdf(word, pageNum) {
-    // Remover highlights anteriores
-    document.querySelectorAll('.pdf-highlight').forEach(h => h.remove());
+// Highlight sequencial no PDF — usa indice do boundary para evitar duplicatas
+let pdfHighlightWordCounter = 0; // conta quantas palavras ja foram faladas nesta sessao
 
+function highlightWordOnPdf(boundaryIdx, pageNum) {
+    document.querySelectorAll('.pdf-highlight').forEach(h => h.remove());
     const pageEl = document.getElementById(`pdf-page-${pageNum}`);
     if (!pageEl) return;
 
-    const img = pageEl.querySelector('img');
-    if (!img || !img.complete) return;
-
     const words = pageWordPositions[pageNum];
-    if (!words) return;
+    if (!words || !words.length) return;
 
-    // Buscar a palavra (primeira ocorrência que ainda não foi marcada)
-    const cleanWord = word.toLowerCase().replace(/[.,;:!?"'()\[\]]/g, '');
-    for (const w of words) {
-        const cleanW = w.word.toLowerCase().replace(/[.,;:!?"'()\[\]]/g, '');
-        if (cleanW === cleanWord || cleanW.startsWith(cleanWord) || cleanWord.startsWith(cleanW)) {
-            const overlay = document.createElement('div');
-            overlay.className = 'pdf-highlight';
-            overlay.style.left = (w.x0 * 100) + '%';
-            overlay.style.top = (w.y0 * 100) + '%';
-            overlay.style.width = ((w.x1 - w.x0) * 100) + '%';
-            overlay.style.height = ((w.y1 - w.y0) * 100) + '%';
-            pageEl.appendChild(overlay);
+    // Mapear boundary -> palavra na pagina por posicao proporcional
+    const ratio = wordBoundaries.length > 0 ? boundaryIdx / wordBoundaries.length : 0;
+    const targetWordIdx = Math.min(Math.floor(ratio * words.length), words.length - 1);
 
-            // PDF view: SEM auto-scroll — user controla livremente
-            return;
+    // Buscar match exato proximo ao targetWordIdx
+    const bText = wordBoundaries[boundaryIdx]?.text?.toLowerCase().replace(/[.,;:!?"'()\[\]]/g, '') || '';
+    let bestIdx = targetWordIdx;
+    let bestDist = Infinity;
+
+    // Procurar num raio de +-15 palavras ao redor da posicao estimada
+    for (let i = Math.max(0, targetWordIdx - 15); i < Math.min(words.length, targetWordIdx + 15); i++) {
+        const wText = words[i].word.toLowerCase().replace(/[.,;:!?"'()\[\]]/g, '');
+        if (wText === bText || wText.startsWith(bText) || bText.startsWith(wText)) {
+            const dist = Math.abs(i - targetWordIdx);
+            if (dist < bestDist) { bestDist = dist; bestIdx = i; }
         }
+    }
+
+    const w = words[bestIdx];
+    if (!w) return;
+
+    // Highlight da linha inteira (estilo Speechify)
+    const lineWords = words.filter(lw => Math.abs(lw.y0 - w.y0) < 0.005);
+    for (const lw of lineWords) {
+        const overlay = document.createElement('div');
+        overlay.className = 'pdf-highlight';
+        overlay.style.left = (lw.x0 * 100) + '%';
+        overlay.style.top = (lw.y0 * 100) + '%';
+        overlay.style.width = ((lw.x1 - lw.x0) * 100) + '%';
+        overlay.style.height = ((lw.y1 - lw.y0) * 100) + '%';
+        pageEl.appendChild(overlay);
     }
 }
 
-// Atualizar highlight no PDF durante leitura
 let lastPdfHighlightIdx = -1;
-
 function updatePdfHighlight() {
-    if (!wordBoundaries.length || currentView !== 'pdf') return;
+    if (!wordBoundaries.length || currentView !== 'pdf' || !settings.highlight) return;
     const ms = audio.currentTime * 1000;
-
     let activeBIdx = -1;
     for (let i = 0; i < wordBoundaries.length; i++) {
         const b = wordBoundaries[i];
         if (ms >= b.offset_ms && ms < b.offset_ms + b.duration_ms + 300) { activeBIdx = i; break; }
     }
-
     if (activeBIdx >= 0 && activeBIdx !== lastPdfHighlightIdx) {
         lastPdfHighlightIdx = activeBIdx;
         const chunk = currentChunks[currentChunkIndex];
         if (chunk) {
-            highlightWordOnPdf(wordBoundaries[activeBIdx].text, chunk.page);
+            // Garantir que word positions estao carregadas
+            if (pageWordPositions[chunk.page]) {
+                highlightWordOnPdf(activeBIdx, chunk.page);
+            } else {
+                loadPageWords(chunk.page).then(() => highlightWordOnPdf(activeBIdx, chunk.page));
+            }
         }
     }
 }
 
 // === CLICK-TO-READ NO PDF ===
+
+// Encontra o chunk mais proximo de uma pagina (nao exige match exato)
+function findChunkForPage(pageNum) {
+    let best = -1;
+    for (let i = 0; i < currentChunks.length; i++) {
+        if (currentChunks[i].page <= pageNum) best = i;
+    }
+    // Se nenhum chunk <= pageNum, pega o primeiro
+    return best >= 0 ? best : 0;
+}
+
+// Encontra o boundary mais proximo de uma palavra do PDF usando texto do chunk
+function findBoundaryForWord(clickedWord, wordIdx, pageWords, chunkText) {
+    if (!wordBoundaries.length) return -1;
+
+    // Estrategia 1: match direto pela palavra clicada
+    const cleanClicked = clickedWord.toLowerCase().replace(/[.,;:!?"'()\[\]]/g, '');
+
+    // Calcular posicao relativa da palavra na pagina
+    const relativePos = pageWords.length > 0 ? wordIdx / pageWords.length : 0;
+
+    // Encontrar todas as ocorrencias da palavra nos boundaries
+    const matches = [];
+    for (let i = 0; i < wordBoundaries.length; i++) {
+        const bt = wordBoundaries[i].text.toLowerCase().replace(/[.,;:!?"'()\[\]]/g, '');
+        if (bt === cleanClicked || bt.startsWith(cleanClicked) || cleanClicked.startsWith(bt)) {
+            matches.push(i);
+        }
+    }
+
+    // Se tem matches, pegar o mais proximo da posicao relativa
+    if (matches.length > 0) {
+        const targetBIdx = Math.floor(relativePos * wordBoundaries.length);
+        let bestMatch = matches[0], bestDist = Infinity;
+        for (const m of matches) {
+            const dist = Math.abs(m - targetBIdx);
+            if (dist < bestDist) { bestDist = dist; bestMatch = m; }
+        }
+        return bestMatch;
+    }
+
+    // Fallback: usar posicao proporcional direta
+    const targetBIdx = Math.floor(relativePos * wordBoundaries.length);
+    return Math.min(targetBIdx, wordBoundaries.length - 1);
+}
+
 function setupPdfClickToRead(pageNum) {
     const pageEl = document.getElementById(`pdf-page-${pageNum}`);
     if (!pageEl || pageEl.dataset.clickSetup) return;
     pageEl.dataset.clickSetup = 'true';
 
-    // Hover: mostrar highlight na linha sob o cursor
+    // Pre-load word positions eagerly (nao esperar mouseenter)
+    loadPageWords(pageNum);
+
     pageEl.addEventListener('mousemove', async (e) => {
-        const img = pageEl.querySelector('img');
-        if (!img) return;
-        const rect = img.getBoundingClientRect();
+        if (!settings.clickToListen) return;
+        const canvas = pageEl.querySelector('canvas') || pageEl.querySelector('img');
+        if (!canvas) return;
+        const rect = canvas.getBoundingClientRect();
         const relY = (e.clientY - rect.top) / rect.height;
 
-        // Remover hover anterior
         pageEl.querySelectorAll('.pdf-hover-line').forEach(h => h.remove());
 
-        const words = await loadPageWords(pageNum);
+        const words = pageWordPositions[pageNum] || await loadPageWords(pageNum);
         if (!words.length) return;
 
-        // Encontrar a linha mais próxima do cursor
-        let closestLine = null;
-        let closestDist = Infinity;
+        let closestLine = null, closestDist = Infinity;
         for (const w of words) {
             const midY = (w.y0 + w.y1) / 2;
             const dist = Math.abs(relY - midY);
@@ -798,7 +1265,6 @@ function setupPdfClickToRead(pageNum) {
         }
 
         if (closestLine && closestDist < 0.03) {
-            // Encontrar todas as palavras da mesma linha
             const lineWords = words.filter(w => Math.abs(w.y0 - closestLine.y0) < 0.005);
             if (lineWords.length) {
                 const minX = Math.min(...lineWords.map(w => w.x0));
@@ -819,17 +1285,16 @@ function setupPdfClickToRead(pageNum) {
     });
 
     pageEl.addEventListener('click', async (e) => {
-        const img = pageEl.querySelector('img');
-        if (!img) return;
+        if (!settings.clickToListen) return;
+        const canvas = pageEl.querySelector('canvas') || pageEl.querySelector('img');
+        if (!canvas) return;
 
-        const rect = img.getBoundingClientRect();
+        const rect = canvas.getBoundingClientRect();
         const relX = (e.clientX - rect.left) / rect.width;
         const relY = (e.clientY - rect.top) / rect.height;
 
-        // Encontrar a palavra mais próxima do clique
-        const words = await loadPageWords(pageNum);
-        let closestWord = null;
-        let closestDist = Infinity;
+        const words = pageWordPositions[pageNum] || await loadPageWords(pageNum);
+        let closestWord = null, closestDist = Infinity;
 
         for (const w of words) {
             if (relY >= w.y0 - 0.015 && relY <= w.y1 + 0.015 && relX >= w.x0 - 0.03 && relX <= w.x1 + 0.03) {
@@ -840,104 +1305,55 @@ function setupPdfClickToRead(pageNum) {
 
         if (!closestWord) return;
 
-        // Encontrar o índice da palavra clicada na lista de words da página
-        const wordIdx = words.indexOf(closestWord);
-        const wordRatio = words.length > 0 ? wordIdx / words.length : 0;
+        // Encontrar chunk correto para esta pagina
+        const chunkIdx = findChunkForPage(pageNum);
+        if (chunkIdx !== currentChunkIndex) { currentChunkIndex = chunkIdx; }
 
-        // Encontrar o chunk que contém esta página
-        const chunkIdx = currentChunks.findIndex(c => c.page === pageNum);
-        if (chunkIdx < 0) return;
-
-        // Mudar para o chunk correto
-        if (chunkIdx !== currentChunkIndex) {
-            currentChunkIndex = chunkIdx;
-            const cl=document.getElementById('chunkLabel'); if(cl) cl.textContent=`${currentChunkIndex+1} / ${currentChunks.length}`;
-        }
-
-        // Gerar áudio + boundaries (sempre recarregar para o chunk correto)
         showPlayLoading(true);
         try {
             let data;
-            if (prefetchCache[currentChunkIndex]) {
-                data = prefetchCache[currentChunkIndex];
-                delete prefetchCache[currentChunkIndex];
-            } else {
-                const r = await fetch(`/api/documents/${currentDoc.id}/chunks/${currentChunkIndex}/audio`, {method:'POST'});
-                data = await r.json();
-            }
+            if (prefetchCache[currentChunkIndex]) { data = prefetchCache[currentChunkIndex]; delete prefetchCache[currentChunkIndex]; }
+            else { const r = await fetch(`/api/documents/${currentDoc.id}/chunks/${currentChunkIndex}/audio`, {method:'POST'}); data = await r.json(); }
 
-            const [_, bData] = await Promise.all([
-                loadChunkText(currentChunkIndex),
-                fetch(data.boundaries_url).then(r=>r.json()).catch(()=>[]),
-            ]);
-            wordBoundaries = bData;
+            wordBoundaries = data.boundaries || [];
+            if (data.text) renderTextWithWords(data.text);
             buildBoundaryMap();
 
             audio.src = data.audio_url;
             audio.playbackRate = currentSpeed;
+
+            // Seek preciso: encontrar boundary pela palavra clicada
+            const wordIdx = words.indexOf(closestWord);
+            if (wordBoundaries.length > 0) {
+                const targetBIdx = findBoundaryForWord(closestWord.word, wordIdx, words, data.text || '');
+                if (targetBIdx >= 0) {
+                    audio.currentTime = wordBoundaries[targetBIdx].offset_ms / 1000;
+                }
+            }
         } catch(e) { showPlayLoading(false); showToast(e.message); return; }
 
-        // Usar posição proporcional para seek (mais confiável que text matching)
-        // Se clicou na palavra 60 de 200 na página (30%), vai para 30% do áudio
-        if (wordBoundaries.length > 0) {
-            const targetBIdx = Math.floor(wordRatio * wordBoundaries.length);
-            const safeBIdx = Math.min(targetBIdx, wordBoundaries.length - 1);
-            audio.currentTime = wordBoundaries[safeBIdx].offset_ms / 1000;
-        }
-
-        // Iniciar play
         await audio.play();
         isPlaying = true;
         showPlayLoading(false);
         updatePlayButton();
+        updateChapterDisplay();
         startHighlightLoop();
+        resetPlayerIdle();
 
-        // Prefetch next
-        const nx = currentChunkIndex + 1;
-        if (nx < currentChunks.length && !prefetchCache[nx]) {
-            fetch(`/api/documents/${currentDoc.id}/chunks/${nx}/audio`, {method:'POST'}).then(r=>r.json()).then(d=>{if(d.audio_url) prefetchCache[nx]=d;}).catch(()=>{});
-        }
+        prefetchAhead(currentChunkIndex);
     });
 }
 
-// Override do updateHighlight original para incluir PDF highlight
-const _origUpdateHighlight = updateHighlight;
-updateHighlight = function() {
-    _origUpdateHighlight();
-    updatePdfHighlight();
-};
-
 // === VOZES ===
-let selectedVoice = 'pt-BR-AntonioNeural';
-
 async function loadVoices() {
     try {
         const r = await fetch('/api/voices?language=pt-BR');
         const d = await r.json();
-        const sel = document.getElementById('voiceSelect');
-        sel.innerHTML = d.voices.map(v => {
-            const name = v.name.replace('pt-BR-', '').replace('Neural', '');
-            const gender = v.gender === 'Male' ? '' : '';
-            return `<option value="${v.name}" ${v.name === selectedVoice ? 'selected' : ''}>${gender} ${name}</option>`;
-        }).join('');
+        voiceList = d.voices || [];
     } catch {}
 }
 
-function changeVoice(voice) {
-    selectedVoice = voice;
-    // Limpar cache de áudio (precisa regenerar com nova voz)
-    prefetchCache = {};
-    showToast(`Voz: ${voice.replace('pt-BR-', '').replace('Neural', '')}`);
-}
-
-// Carregar vozes ao abrir reader
-const _origOpen = openDocument;
-openDocument = async function(docId) {
-    await _origOpen(docId);
-    loadVoices();
-};
-
-// === PRÉ-GERAR CHUNKS em background ===
+// === PRE-GERAR CHUNKS em background ===
 async function prefetchChunks(startIdx, count) {
     for (let i = startIdx; i < Math.min(startIdx + count, currentChunks.length); i++) {
         if (prefetchCache[i]) continue;
@@ -948,6 +1364,27 @@ async function prefetchChunks(startIdx, count) {
         } catch {}
     }
 }
+
+// === EXPOSE TO GLOBAL ===
+window.handleFileUpload = handleFileUpload;
+window.handleLogout = handleLogout;
+window.openDocument = openDocument;
+window.closeReader = closeReader;
+window.deleteDoc = deleteDoc;
+window.toggleSidebar = toggleSidebar;
+window.setSidebarTab = setSidebarTab;
+window.goToPage = goToPage;
+window.setView = setView;
+window.togglePlay = togglePlay;
+window.seekAudio = seekAudio;
+window.setSpeed = setSpeed;
+window.skipBack = skipBack;
+window.skipForward = skipForward;
+window.cycleVoice = cycleVoice;
+window.seekToWord = seekToWord;
+window.toggleSearch = toggleSearch;
+window.doSearch = doSearch;
+window.searchNav = searchNav;
 </script>
 </body>
 </html>

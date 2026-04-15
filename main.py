@@ -95,6 +95,54 @@ async def health():
     return {"status": "ok", "service": "echo", "voice": os.environ.get("TTS_VOICE", "pt-BR-AntonioNeural")}
 
 
+# --- Servir PDF original (para PDF.js client-side) ---
+
+@app.get("/api/documents/{doc_id}/pdf")
+async def serve_pdf(doc_id: str, request: Request):
+    """Serve o PDF original para renderizacao client-side via PDF.js."""
+    require_auth(request)
+    doc = get_document(doc_id)
+    if not doc:
+        raise HTTPException(404, "Documento não encontrado")
+    pdf_path = os.path.join(UPLOAD_DIR, doc["filename"])
+    if not os.path.exists(pdf_path):
+        raise HTTPException(404, "PDF não encontrado")
+    return FileResponse(pdf_path, media_type="application/pdf")
+
+
+# --- Busca dentro do documento ---
+
+@app.get("/api/documents/{doc_id}/search")
+async def search_document(doc_id: str, q: str = Query(..., min_length=2)):
+    """Busca texto em todos os chunks do documento."""
+    doc = get_document(doc_id)
+    if not doc:
+        raise HTTPException(404, "Documento não encontrado")
+    chunks = get_chunks(doc_id)
+    query = q.lower()
+    results = []
+    for c in chunks:
+        text = c["text_content"]
+        lower_text = text.lower()
+        idx = lower_text.find(query)
+        if idx >= 0:
+            # Extrair contexto ao redor
+            start = max(0, idx - 40)
+            end = min(len(text), idx + len(query) + 40)
+            snippet = text[start:end].strip()
+            if start > 0:
+                snippet = "..." + snippet
+            if end < len(text):
+                snippet = snippet + "..."
+            results.append({
+                "chunk_index": c["chunk_index"],
+                "page": c["page_number"],
+                "snippet": snippet,
+                "position": idx,
+            })
+    return {"results": results, "total": len(results), "query": q}
+
+
 # --- Covers ---
 
 @app.get("/api/covers/{doc_id}.png")
