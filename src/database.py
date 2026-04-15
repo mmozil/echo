@@ -142,7 +142,7 @@ def delete_session(token: str):
 
 def create_document(title: str, filename: str, total_pages: int, total_chunks: int, file_size: int) -> str:
     doc_id = str(uuid.uuid4())[:8]
-    colors = ["#E67E22", "#0D9488", "#2563EB", "#DC2626", "#059669", "#D97706", "#64748B"]
+    colors = ["#1A1A1A", "#2D2D2D", "#404040", "#525252", "#374151", "#1F2937", "#111827"]
     color = colors[hash(title) % len(colors)]
     conn = get_db()
     conn.execute(
