@@ -1,0 +1,19 @@
+services:
+  echo:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8095:8095"
+    volumes:
+      - echo-data:/app/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8095/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  echo-data:
+    driver: local
