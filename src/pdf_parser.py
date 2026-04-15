@@ -78,6 +78,26 @@ def get_pdf_info(file_path: str) -> dict:
     return info
 
 
+def extract_cover(file_path: str, output_path: str, width: int = 400) -> bool:
+    """Extrai a primeira página do PDF como imagem PNG para usar como capa."""
+    try:
+        doc = fitz.open(file_path)
+        if len(doc) == 0:
+            doc.close()
+            return False
+
+        page = doc[0]
+        # Calcular zoom para a largura desejada
+        zoom = width / page.rect.width
+        mat = fitz.Matrix(zoom, zoom)
+        pix = page.get_pixmap(matrix=mat)
+        pix.save(output_path)
+        doc.close()
+        return True
+    except Exception:
+        return False
+
+
 def _clean_text(text: str) -> str:
     """Limpa texto extraído de PDF."""
     # Remove hífens de quebra de linha

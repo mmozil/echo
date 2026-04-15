@@ -283,6 +283,15 @@
 
         .doc-cover svg { width: 20px; height: 20px; color: white; opacity: 0.9; }
 
+        .doc-cover-img {
+            width: 44px;
+            height: 56px;
+            border-radius: 6px;
+            object-fit: cover;
+            flex-shrink: 0;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+        }
+
         .doc-info { flex: 1; min-width: 0; }
 
         .doc-title {
@@ -363,6 +372,15 @@
         }
 
         .player-cover svg { width: 36px; height: 36px; color: white; opacity: 0.9; }
+
+        .player-cover-img {
+            width: 80px;
+            height: 100px;
+            border-radius: 10px;
+            object-fit: cover;
+            flex-shrink: 0;
+            box-shadow: var(--shadow-md);
+        }
 
         .player-title {
             font-family: var(--font-display);
@@ -664,6 +682,7 @@
         </div>
 
         <div class="player-header">
+            <img class="player-cover-img" id="playerCoverImg" src="" alt="" style="display:none">
             <div class="player-cover" id="playerCover">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
             </div>
@@ -824,7 +843,8 @@ function renderDocuments(docs) {
                         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
                     </button>
                     <div class="doc-card-header">
-                        <div class="doc-cover" style="background:${doc.cover_color}">
+                        <img class="doc-cover-img" src="/api/covers/${doc.id}.png" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" alt="">
+                        <div class="doc-cover" style="background:${doc.cover_color};display:none">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
                         </div>
                         <div class="doc-info">
@@ -866,6 +886,13 @@ async function openDocument(docId) {
         document.getElementById('playerTitle').textContent = currentDoc.title;
         document.getElementById('playerSubtitle').textContent = `${currentDoc.total_pages} páginas · ${currentDoc.total_chunks} trechos`;
         document.getElementById('playerCover').style.background = currentDoc.cover_color;
+
+        // Mostrar capa se existir
+        const coverImg = document.getElementById('playerCoverImg');
+        const coverFallback = document.getElementById('playerCover');
+        coverImg.src = `/api/covers/${currentDoc.id}.png`;
+        coverImg.onload = () => { coverImg.style.display = 'block'; coverFallback.style.display = 'none'; };
+        coverImg.onerror = () => { coverImg.style.display = 'none'; coverFallback.style.display = 'flex'; };
         document.getElementById('chunkInfo').textContent = `${currentChunkIndex + 1} de ${currentChunks.length}`;
 
         renderChapters();

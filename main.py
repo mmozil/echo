@@ -15,7 +15,9 @@ from pydantic import BaseModel
 from src.database import init_db, create_document, list_documents, get_document, delete_document
 from src.database import save_chunk, get_chunks, get_chunk, update_chunk_audio, update_progress, get_progress
 from src.database import create_user, authenticate_user, create_session, get_user_by_session, delete_session
-from src.pdf_parser import extract_text_from_pdf, chunk_pages, get_pdf_info
+from src.pdf_parser import extract_text_from_pdf, chunk_pages, get_pdf_info, extract_cover
+
+COVERS_DIR = os.environ.get("COVERS_DIR", "/app/data/covers")
 from src.tts_service import generate_audio, generate_audio_stream, list_voices
 
 UPLOAD_DIR = os.environ.get("UPLOAD_DIR", "/app/data/uploads")
@@ -31,6 +33,7 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 async def startup():
     os.makedirs(UPLOAD_DIR, exist_ok=True)
     os.makedirs(AUDIO_DIR, exist_ok=True)
+    os.makedirs(COVERS_DIR, exist_ok=True)
     init_db()
 
 
@@ -86,6 +89,16 @@ async def register_page(request: Request):
 @app.get("/api/health")
 async def health():
     return {"status": "ok", "service": "echo", "voice": os.environ.get("TTS_VOICE", "pt-BR-AntonioNeural")}
+
+
+# --- Covers ---
+
+@app.get("/api/covers/{doc_id}.png")
+async def serve_cover(doc_id: str):
+    filepath = os.path.join(COVERS_DIR, f"{doc_id}.png")
+    if not os.path.exists(filepath):
+        raise HTTPException(404, "Capa não encontrada")
+    return FileResponse(filepath, media_type="image/png")
 
 
 # --- Auth ---
@@ -188,12 +201,17 @@ async def upload_document(file: UploadFile = File(...)):
     for c in chunks:
         save_chunk(doc_id, c["chunk_index"], c["page_number"], c["text"])
 
+    # Extrair capa (primeira página como PNG)
+    cover_path = os.path.join(COVERS_DIR, f"{doc_id}.png")
+    has_cover = extract_cover(file_path, cover_path)
+
     return {
         "id": doc_id,
         "title": title,
         "total_pages": info["total_pages"],
         "total_chunks": len(chunks),
         "file_size": len(content),
+        "has_cover": has_cover,
     }
 
 
