@@ -773,13 +773,16 @@ async function renderPdfPage(pageNum) {
 
     try {
         const page = await pdfDoc.getPage(pageNum);
-        const scale = 1.5;
+        const dpr = window.devicePixelRatio || 1;
+        const scale = 1.5 * dpr;
         const viewport = page.getViewport({ scale });
         const canvas = document.getElementById(`pdf-canvas-${pageNum}`);
         if (!canvas) return;
 
         canvas.width = viewport.width;
         canvas.height = viewport.height;
+        canvas.style.width = (viewport.width / dpr) + 'px';
+        canvas.style.height = (viewport.height / dpr) + 'px';
         const ctx = canvas.getContext('2d');
 
         await page.render({ canvasContext: ctx, viewport }).promise;
