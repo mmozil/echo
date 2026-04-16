@@ -473,7 +473,7 @@ let playerIdleTimer = null;
 const audio = document.getElementById('audioPlayer');
 
 // === SETTINGS ===
-const defaultSettings = { theme: 'system', highlight: true, autoplay: false, clickToListen: true, autoHide: false };
+const defaultSettings = { theme: 'light', highlight: true, autoplay: false, clickToListen: true, autoHide: false };
 let settings = { ...defaultSettings, ...JSON.parse(localStorage.getItem('echo_settings') || '{}') };
 
 function saveSetting(key, val) { settings[key] = val; localStorage.setItem('echo_settings', JSON.stringify(settings)); if (key === 'theme') applyTheme(); if (key === 'autoHide') resetPlayerIdle(); }

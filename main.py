@@ -86,25 +86,28 @@ def require_auth(request: Request) -> dict:
 
 
 # --- Páginas (sem redirects server-side — JS controla auth) ---
+# Headers anti-cache para Cloudflare não cachear HTML dinâmico
+_NO_CACHE = {"Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache"}
+
 
 @app.get("/", response_class=HTMLResponse)
 async def landing():
-    return FileResponse("static/landing.html")
+    return FileResponse("static/landing.html", headers=_NO_CACHE)
 
 
 @app.get("/app", response_class=HTMLResponse)
 async def app_page():
-    return FileResponse("static/index.html")
+    return FileResponse("static/index.html", headers=_NO_CACHE)
 
 
 @app.get("/login", response_class=HTMLResponse)
 async def login_page():
-    return FileResponse("static/login.html")
+    return FileResponse("static/login.html", headers=_NO_CACHE)
 
 
 @app.get("/register", response_class=HTMLResponse)
 async def register_page():
-    return FileResponse("static/register.html")
+    return FileResponse("static/register.html", headers=_NO_CACHE)
 
 
 # --- Health ---
