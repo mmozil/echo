@@ -12,6 +12,21 @@ services:
       timeout: 5s
       start_period: 30s
       retries: 5
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.echo-https.rule=Host(`echo.hovio.com.br`)"
+      - "traefik.http.routers.echo-https.entrypoints=https"
+      - "traefik.http.routers.echo-https.tls=true"
+      - "traefik.http.routers.echo-https.tls.certresolver=letsencrypt"
+      - "traefik.http.services.echo.loadbalancer.server.port=8095"
+      - "traefik.http.routers.echo-http.rule=Host(`echo.hovio.com.br`)"
+      - "traefik.http.routers.echo-http.entrypoints=http"
+    networks:
+      - coolify
 
 volumes:
   echo-data:
+
+networks:
+  coolify:
+    external: true
