@@ -791,7 +791,6 @@ async function renderPdfPage(pageNum) {
         await page.render({ canvasContext: ctx, viewport }).promise;
 
         // TEXT LAYER: spans invisiveis sobre o canvas (como Speechify/PSPDFKit)
-        const pageEl = document.getElementById(`pdf-page-${pageNum}`);
         if (!pageEl) return;
 
         const textContent = await page.getTextContent();
