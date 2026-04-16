@@ -509,15 +509,50 @@ function resetPlayerIdle() {
     }
 }
 
+// === AUTH: injetar token em todas as chamadas /api/ ===
+(function() {
+    const _fetch = window.fetch;
+    window.fetch = function(url, opts) {
+        const token = localStorage.getItem('echo_token');
+        if (token && typeof url === 'string' && url.startsWith('/api/')) {
+            opts = Object.assign({}, opts);
+            opts.headers = Object.assign({}, opts.headers, { 'Authorization': 'Bearer ' + token });
+        }
+        return _fetch.call(this, url, opts);
+    };
+})();
+
+// Se não tem token, nem carrega a página — vai direto pro login
+if (!localStorage.getItem('echo_token')) {
+    window.location.href = '/login';
+}
+
 // === INIT ===
 loadSettings();
 loadUser(); loadDocuments(); setupDragDrop();
 window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { if (settings.theme === 'system') applyTheme(); });
 
 async function loadUser() {
-    try { const r = await fetch('/api/auth/me'); if (!r.ok) { window.location.href='/login'; return; } const d = await r.json(); document.getElementById('userName').textContent = d.name; } catch { window.location.href='/login'; }
+    try {
+        const r = await fetch('/api/auth/me');
+        if (!r.ok) {
+            // Token inválido ou expirado — limpar e ir pro login
+            localStorage.removeItem('echo_token');
+            window.location.href = '/login';
+            return;
+        }
+        const d = await r.json();
+        document.getElementById('userName').textContent = d.name;
+    } catch {
+        localStorage.removeItem('echo_token');
+        window.location.href = '/login';
+    }
 }
-async function handleLogout() { await fetch('/api/auth/logout',{method:'POST'}); window.location.href='/login'; }
+async function handleLogout() {
+    await fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
+    localStorage.removeItem('echo_token');
+    window.location.href = '/login';
+}
 
 function setupDragDrop() {
     const a = document.getElementById('uploadArea');

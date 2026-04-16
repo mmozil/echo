@@ -9,8 +9,8 @@ import asyncio
 import logging
 from pathlib import Path
 
-from fastapi import FastAPI, UploadFile, File, HTTPException, Query, Request, Response, Cookie
-from fastapi.responses import FileResponse, StreamingResponse, HTMLResponse, RedirectResponse
+from fastapi import FastAPI, UploadFile, File, HTTPException, Query, Request, Response
+from fastapi.responses import FileResponse, StreamingResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -44,15 +44,34 @@ async def startup():
     os.makedirs(COVERS_DIR, exist_ok=True)
     os.makedirs(PAGES_DIR, exist_ok=True)
     init_db()
+    # Reset de senha único — remover após deploy
+    reset_user_password("esneper.adm@gmail.com", "18051985")
 
 
 # --- Helpers ---
 
+def _extract_token(request: Request) -> tuple[str | None, str]:
+    """Extrai token de Authorization header ou cookie. Retorna (token, source)."""
+    auth = request.headers.get("authorization", "")
+    if auth.startswith("Bearer "):
+        return auth[7:].strip(), "header"
+    cookie = request.cookies.get("echo_session")
+    if cookie:
+        return cookie, "cookie"
+    return None, "none"
+
+
 def get_current_user(request: Request) -> dict | None:
-    token = request.cookies.get("echo_session")
+    """Resolve sessão via Bearer token (prioridade) ou cookie (fallback)."""
+    token, source = _extract_token(request)
     if not token:
         return None
-    return get_user_by_session(token)
+    user = get_user_by_session(token)
+    if not user:
+        logger.warning("AUTH %s — token inválido via %s (token=%s...)",
+                        request.url.path, source, token[:8])
+        return None
+    return user
 
 
 def require_auth(request: Request) -> dict:
@@ -62,7 +81,7 @@ def require_auth(request: Request) -> dict:
     return user
 
 
-# --- Páginas ---
+# --- Páginas (sem redirects server-side — JS controla auth) ---
 
 @app.get("/", response_class=HTMLResponse)
 async def landing():
@@ -70,26 +89,17 @@ async def landing():
 
 
 @app.get("/app", response_class=HTMLResponse)
-async def app_page(request: Request):
-    user = get_current_user(request)
-    if not user:
-        return RedirectResponse("/login", status_code=302)
+async def app_page():
     return FileResponse("static/index.html")
 
 
 @app.get("/login", response_class=HTMLResponse)
-async def login_page(request: Request):
-    user = get_current_user(request)
-    if user:
-        return RedirectResponse("/app", status_code=302)
+async def login_page():
     return FileResponse("static/login.html")
 
 
 @app.get("/register", response_class=HTMLResponse)
-async def register_page(request: Request):
-    user = get_current_user(request)
-    if user:
-        return RedirectResponse("/app", status_code=302)
+async def register_page():
     return FileResponse("static/register.html")
 
 
@@ -232,25 +242,25 @@ async def register(body: RegisterRequest, response: Response):
         raise HTTPException(400, "Nome é obrigatório")
 
     user_id, is_new = create_or_update_user(body.name.strip(), body.email, body.password)
-    logger.info("Register: %s — %s (user_id=%s)", body.email, "novo" if is_new else "senha atualizada", user_id)
-
     token = create_session(user_id)
-    response.set_cookie("echo_session", token, httponly=True, samesite="lax", max_age=30 * 24 * 3600)
-    return {"ok": True, "name": body.name.strip(), "new_user": is_new}
+    # Cookie como fallback (pode não funcionar atrás de proxy)
+    response.set_cookie("echo_session", token, httponly=True, samesite="lax", path="/", max_age=30 * 24 * 3600)
+    logger.info("REGISTER %s user=%s token=%s...", body.email, user_id, token[:8])
+    return {"ok": True, "name": body.name.strip(), "new_user": is_new, "token": token}
 
 
 @app.post("/api/auth/login")
 async def login(body: LoginRequest, response: Response):
-    logger.info("Login attempt: %s", body.email)
+    logger.info("LOGIN %s", body.email)
     user = authenticate_user(body.email, body.password)
     if not user:
-        logger.warning("Login FAILED: %s", body.email)
         raise HTTPException(401, "Email ou senha incorretos")
 
     token = create_session(user["id"])
-    response.set_cookie("echo_session", token, httponly=True, samesite="lax", max_age=30 * 24 * 3600)
-    logger.info("Login OK: %s → session created", body.email)
-    return {"ok": True, "name": user["name"]}
+    # Cookie como fallback (pode não funcionar atrás de proxy)
+    response.set_cookie("echo_session", token, httponly=True, samesite="lax", path="/", max_age=30 * 24 * 3600)
+    logger.info("LOGIN OK %s token=%s...", body.email, token[:8])
+    return {"ok": True, "name": user["name"], "token": token}
 
 
 @app.get("/api/auth/me")
@@ -263,10 +273,11 @@ async def me(request: Request):
 
 @app.post("/api/auth/logout")
 async def logout(request: Request, response: Response):
-    token = request.cookies.get("echo_session")
+    token, source = _extract_token(request)
     if token:
         delete_session(token)
-    response.delete_cookie("echo_session")
+    response.delete_cookie("echo_session", path="/")
+    logger.info("LOGOUT via %s", source)
     return {"ok": True}
 
 
@@ -358,6 +369,7 @@ async def upload_document(file: UploadFile = File(...)):
     # Extrair capa (primeira página como PNG)
     cover_path = os.path.join(COVERS_DIR, f"{doc_id}.png")
     has_cover = extract_cover(file_path, cover_path)
+    logger.info("UPLOAD %s — cover=%s path=%s", doc_id, has_cover, cover_path)
 
     # Pré-gerar áudio de TODOS os chunks em background
     asyncio.create_task(_pregenerate_all_audio(doc_id))
@@ -435,6 +447,16 @@ async def remove_document(doc_id: str):
     pdf_path = os.path.join(UPLOAD_DIR, doc["filename"])
     if os.path.exists(pdf_path):
         os.remove(pdf_path)
+
+    # Remover cover
+    cover_path = os.path.join(COVERS_DIR, f"{doc_id}.png")
+    if os.path.exists(cover_path):
+        os.remove(cover_path)
+
+    # Remover pages renderizadas
+    page_dir = os.path.join(PAGES_DIR, doc_id)
+    if os.path.exists(page_dir):
+        shutil.rmtree(page_dir, ignore_errors=True)
 
     delete_document(doc_id)
     return {"ok": True}
