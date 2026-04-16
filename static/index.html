@@ -529,14 +529,14 @@ if (!localStorage.getItem('echo_token')) {
 
 // === INIT ===
 loadSettings();
-loadUser(); loadDocuments(); setupDragDrop();
+initApp();
 window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { if (settings.theme === 'system') applyTheme(); });
 
-async function loadUser() {
+async function initApp() {
+    // 1. Verificar auth primeiro
     try {
         const r = await fetch('/api/auth/me');
         if (!r.ok) {
-            // Token inválido ou expirado — limpar e ir pro login
             localStorage.removeItem('echo_token');
             window.location.href = '/login';
             return;
@@ -546,8 +546,13 @@ async function loadUser() {
     } catch {
         localStorage.removeItem('echo_token');
         window.location.href = '/login';
+        return;
     }
+    // 2. Auth OK — carregar dados
+    loadDocuments();
+    setupDragDrop();
 }
+
 async function handleLogout() {
     await fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
     localStorage.removeItem('echo_token');
@@ -574,7 +579,12 @@ async function handleFileUpload(file) {
 }
 
 async function loadDocuments() {
-    try { const r = await fetch('/api/documents'); const d = await r.json(); renderDocuments(d.documents); } catch {}
+    try {
+        const r = await fetch('/api/documents');
+        if (!r.ok) { console.error('loadDocuments:', r.status); return; }
+        const d = await r.json();
+        renderDocuments(d.documents || []);
+    } catch (e) { console.error('loadDocuments:', e); }
 }
 
 function renderDocuments(docs) {
