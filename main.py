@@ -45,7 +45,7 @@ async def startup():
     os.makedirs(PAGES_DIR, exist_ok=True)
     init_db()
     # Reset de senha único — remover após deploy
-    reset_user_password("esneper.adm@gmail.com", "18051985")
+    reset_user_password("morais.marcelos@gmail.com", "18051985")
 
 
 # --- Helpers ---
