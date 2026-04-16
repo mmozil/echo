@@ -1,0 +1,17 @@
+services:
+  echo:
+    build: .
+    ports:
+      - "8095:8095"
+    volumes:
+      - echo-data:/app/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8095/api/health"]
+      interval: 10s
+      timeout: 5s
+      start_period: 30s
+      retries: 5
+
+volumes:
+  echo-data:
