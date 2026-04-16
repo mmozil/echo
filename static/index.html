@@ -160,7 +160,7 @@
         .text-view p { margin-bottom: 16px; line-height: 1.95; font-size: 17px; color: var(--charcoal); }
         .text-view .word { cursor: pointer; border-radius: 3px; padding: 1px 1px; transition: background 0.08s; }
         .text-view .word:hover { background: var(--cloud); }
-        .text-view .word.active { background: var(--highlight); padding: 1px 2px; }
+        .text-view .word.active-sentence { background: var(--highlight); padding: 1px 2px; border-radius: 3px; }
         .text-view .word.spoken { color: var(--ink); }
 
         /* === PLAYER BAR === */
@@ -942,6 +942,7 @@ async function playCurrentChunk() {
         else { const r = await fetch(`/api/documents/${currentDoc.id}/chunks/${currentChunkIndex}/audio`,{method:'POST'}); data = await r.json(); if(!data.audio_url) throw new Error(data.detail||'Erro'); }
 
         wordBoundaries = data.boundaries || [];
+        _sentenceRanges = [];
         if (data.text) renderTextWithWords(data.text);
         // Esperar DOM atualizar antes de construir boundary map
         await new Promise(r => requestAnimationFrame(r));
@@ -1019,6 +1020,20 @@ function buildBoundaryMap() {
     }
 }
 
+// Cache de limites de frase (recalculado quando o texto muda)
+let _sentenceRanges = [];
+function buildSentenceRanges(words) {
+    _sentenceRanges = [];
+    let start = 0;
+    for (let i = 0; i < words.length; i++) {
+        const t = words[i].textContent.trim();
+        if (/[.!?;:]$/.test(t) || i === words.length - 1) {
+            _sentenceRanges.push([start, i]);
+            start = i + 1;
+        }
+    }
+}
+
 function updateHighlight() {
     if (!wordBoundaries.length) return;
 
@@ -1027,20 +1042,34 @@ function updateHighlight() {
 
     if (!settings.highlight) return;
 
-    const ms = audio.currentTime*1000;
+    const ms = audio.currentTime * 1000;
     const words = document.querySelectorAll('#textView .word');
     let abi = -1;
-    for (let i=0;i<wordBoundaries.length;i++) { const b=wordBoundaries[i]; if(ms>=b.offset_ms && ms<b.offset_ms+b.duration_ms+300) abi=i; }
-    const awi = abi>=0 ? boundaryToWordMap[abi] : -1;
-    const lsi = abi>0 ? boundaryToWordMap[abi-1] : -1;
-    words.forEach((w,i) => { w.classList.toggle('active',i===awi); w.classList.toggle('spoken',i<=lsi&&i!==awi); });
+    for (let i = 0; i < wordBoundaries.length; i++) { const b = wordBoundaries[i]; if (ms >= b.offset_ms && ms < b.offset_ms + b.duration_ms + 300) abi = i; }
+    const awi = abi >= 0 ? boundaryToWordMap[abi] : -1;
+    const lsi = abi > 0 ? boundaryToWordMap[abi - 1] : -1;
+
+    // Rebuild sentence cache se necessario
+    if (!_sentenceRanges.length && words.length) buildSentenceRanges(words);
+
+    // Encontrar a frase que contem a palavra ativa
+    let sentStart = -1, sentEnd = -1;
+    for (const [s, e] of _sentenceRanges) {
+        if (awi >= s && awi <= e) { sentStart = s; sentEnd = e; break; }
+    }
+
+    // Highlight: frase inteira = active-sentence, ja faladas = spoken
+    words.forEach((w, i) => {
+        w.classList.toggle('active-sentence', i >= sentStart && i <= sentEnd && sentStart >= 0);
+        w.classList.toggle('spoken', i < sentStart && sentStart >= 0);
+    });
 
     // Auto-scroll text view
-    if (awi>=0 && words[awi] && currentView==='text' && !userScrolling) {
+    if (awi >= 0 && words[awi] && currentView === 'text' && !userScrolling) {
         const tv = document.getElementById('textView');
         const wt = words[awi].offsetTop - tv.offsetTop;
         const ts = tv.scrollTop, th = tv.clientHeight;
-        if (wt<ts+60 || wt>ts+th-80) tv.scrollTo({top:wt-th/3,behavior:'smooth'});
+        if (wt < ts + 60 || wt > ts + th - 80) tv.scrollTo({ top: wt - th / 3, behavior: 'smooth' });
     }
 
     // PDF view: scroll to page
@@ -1491,6 +1520,7 @@ async function handleTextLayerClick(pageNum, clickedSpan, textLayerDiv) {
         else { const r = await fetch(`/api/documents/${currentDoc.id}/chunks/${currentChunkIndex}/audio`, {method:'POST'}); data = await r.json(); }
 
         wordBoundaries = data.boundaries || [];
+        _sentenceRanges = [];
         if (data.text) renderTextWithWords(data.text);
         await new Promise(r => requestAnimationFrame(r));
         buildBoundaryMap();
