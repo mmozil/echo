@@ -774,18 +774,22 @@ async function renderPdfPage(pageNum) {
     try {
         const page = await pdfDoc.getPage(pageNum);
         const dpr = window.devicePixelRatio || 1;
-        const baseScale = 2;
-        const viewport = page.getViewport({ scale: baseScale * dpr });
+        const scale = 2;
+        const viewport = page.getViewport({ scale });
         const canvas = document.getElementById(`pdf-canvas-${pageNum}`);
         if (!canvas) return;
 
-        canvas.width = viewport.width;
-        canvas.height = viewport.height;
-        // CSS width:100% no .pdf-page canvas escala para o container
-        // Não setar style.width/height — deixar o CSS controlar
+        // Canvas com resolucao HiDPI (dpr x mais pixels)
+        canvas.width = Math.floor(viewport.width * dpr);
+        canvas.height = Math.floor(viewport.height * dpr);
         const ctx = canvas.getContext('2d');
 
-        await page.render({ canvasContext: ctx, viewport }).promise;
+        // Transform diz ao PDF.js para renderizar nos pixels extras
+        await page.render({
+            canvasContext: ctx,
+            viewport,
+            transform: dpr !== 1 ? [dpr, 0, 0, dpr, 0, 0] : null,
+        }).promise;
 
         // TEXT LAYER: spans invisiveis sobre o canvas (como Speechify/PSPDFKit)
         const pageEl = document.getElementById(`pdf-page-${pageNum}`);
