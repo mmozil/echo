@@ -45,7 +45,11 @@ async def startup():
     os.makedirs(PAGES_DIR, exist_ok=True)
     init_db()
     # Garantir user existe com senha correta — remover após deploy
-    create_or_update_user("Marcelo", "morais.marcelos@gmail.com", "18051985")
+    try:
+        uid, is_new = create_or_update_user("Marcelo", "morais.marcelos@gmail.com", "18051985")
+        logger.info("STARTUP user=%s new=%s", uid, is_new)
+    except Exception as e:
+        logger.error("STARTUP falhou ao criar user: %s", e)
 
 
 # --- Helpers ---
