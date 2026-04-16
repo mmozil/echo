@@ -5,7 +5,10 @@ import os
 import uuid
 import hashlib
 import secrets
+import logging
 from datetime import datetime
+
+logger = logging.getLogger("echo.db")
 
 DB_PATH = os.environ.get("DB_PATH", "/app/data/echo.db")
 
@@ -87,40 +90,86 @@ def _verify_password(password: str, password_hash: str) -> bool:
 
 
 def create_user(name: str, email: str, password: str) -> str | None:
+    """Cria usuário. Se email já existe, retorna None."""
+    normalized = email.lower().strip()
     user_id = str(uuid.uuid4())[:8]
     conn = get_db()
     try:
         conn.execute(
             "INSERT INTO users (id, name, email, password_hash) VALUES (?, ?, ?, ?)",
-            (user_id, name, email.lower().strip(), _hash_password(password)),
+            (user_id, name, normalized, _hash_password(password)),
         )
         conn.commit()
+        logger.info("Usuário criado: %s (%s)", normalized, user_id)
     except sqlite3.IntegrityError:
+        logger.warning("Email já cadastrado: %s", normalized)
         conn.close()
         return None
     conn.close()
     return user_id
 
 
-def reset_user_password(email: str, new_password: str) -> bool:
+def create_or_update_user(name: str, email: str, password: str) -> tuple[str, bool]:
+    """Cria usuário ou atualiza senha se já existe. Retorna (user_id, is_new)."""
+    normalized = email.lower().strip()
     conn = get_db()
-    row = conn.execute("SELECT id FROM users WHERE email = ?", (email.lower().strip(),)).fetchone()
+    row = conn.execute("SELECT id FROM users WHERE email = ?", (normalized,)).fetchone()
+    if row:
+        conn.execute(
+            "UPDATE users SET password_hash = ?, name = ? WHERE email = ?",
+            (_hash_password(password), name, normalized),
+        )
+        conn.commit()
+        user_id = row["id"]
+        logger.info("Senha atualizada para: %s (%s)", normalized, user_id)
+        conn.close()
+        return user_id, False
+    user_id = str(uuid.uuid4())[:8]
+    conn.execute(
+        "INSERT INTO users (id, name, email, password_hash) VALUES (?, ?, ?, ?)",
+        (user_id, name, normalized, _hash_password(password)),
+    )
+    conn.commit()
+    logger.info("Usuário criado: %s (%s)", normalized, user_id)
+    conn.close()
+    return user_id, True
+
+
+def reset_user_password(email: str, new_password: str) -> bool:
+    normalized = email.lower().strip()
+    conn = get_db()
+    row = conn.execute("SELECT id FROM users WHERE email = ?", (normalized,)).fetchone()
     if not row:
+        logger.warning("Reset senha: email não encontrado: %s", normalized)
         conn.close()
         return False
-    conn.execute("UPDATE users SET password_hash = ? WHERE email = ?", (_hash_password(new_password), email.lower().strip()))
+    conn.execute("UPDATE users SET password_hash = ? WHERE email = ?", (_hash_password(new_password), normalized))
     conn.commit()
+    logger.info("Senha resetada para: %s", normalized)
     conn.close()
     return True
 
 
 def authenticate_user(email: str, password: str) -> dict | None:
+    normalized = email.lower().strip()
     conn = get_db()
-    row = conn.execute("SELECT * FROM users WHERE email = ?", (email.lower().strip(),)).fetchone()
+    row = conn.execute("SELECT * FROM users WHERE email = ?", (normalized,)).fetchone()
     conn.close()
-    if not row or not _verify_password(password, row["password_hash"]):
+    if not row:
+        logger.warning("Login falhou — email não encontrado: %s", normalized)
         return None
+    if not _verify_password(password, row["password_hash"]):
+        logger.warning("Login falhou — senha incorreta para: %s", normalized)
+        return None
+    logger.info("Login OK: %s (%s)", normalized, row["id"])
     return dict(row)
+
+
+def list_users() -> list[dict]:
+    conn = get_db()
+    rows = conn.execute("SELECT id, name, email, created_at FROM users ORDER BY created_at DESC").fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
 
 
 def create_session(user_id: str) -> str:

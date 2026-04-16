@@ -6,6 +6,7 @@ Upload de PDFs → extração de texto → TTS com Microsoft Edge (AntonioNeural
 import os
 import shutil
 import asyncio
+import logging
 from pathlib import Path
 
 from fastapi import FastAPI, UploadFile, File, HTTPException, Query, Request, Response, Cookie
@@ -15,8 +16,12 @@ from pydantic import BaseModel
 
 from src.database import init_db, create_document, list_documents, get_document, delete_document
 from src.database import save_chunk, get_chunks, get_chunk, update_chunk_audio, update_progress, get_progress
-from src.database import create_user, authenticate_user, create_session, get_user_by_session, delete_session, reset_user_password
+from src.database import create_user, create_or_update_user, authenticate_user, create_session, get_user_by_session, delete_session, reset_user_password, list_users
 from src.pdf_parser import extract_text_from_pdf, chunk_pages, get_pdf_info, extract_cover, render_page, get_toc, get_word_positions_on_page
+
+# Logging
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(levelname)s: %(message)s")
+logger = logging.getLogger("echo")
 
 PAGES_DIR = os.environ.get("PAGES_DIR", "/app/data/pages")
 
@@ -226,23 +231,25 @@ async def register(body: RegisterRequest, response: Response):
     if not body.name.strip():
         raise HTTPException(400, "Nome é obrigatório")
 
-    user_id = create_user(body.name.strip(), body.email, body.password)
-    if not user_id:
-        raise HTTPException(409, "Email já cadastrado")
+    user_id, is_new = create_or_update_user(body.name.strip(), body.email, body.password)
+    logger.info("Register: %s — %s (user_id=%s)", body.email, "novo" if is_new else "senha atualizada", user_id)
 
     token = create_session(user_id)
     response.set_cookie("echo_session", token, httponly=True, samesite="lax", max_age=30 * 24 * 3600)
-    return {"ok": True, "name": body.name.strip()}
+    return {"ok": True, "name": body.name.strip(), "new_user": is_new}
 
 
 @app.post("/api/auth/login")
 async def login(body: LoginRequest, response: Response):
+    logger.info("Login attempt: %s", body.email)
     user = authenticate_user(body.email, body.password)
     if not user:
+        logger.warning("Login FAILED: %s", body.email)
         raise HTTPException(401, "Email ou senha incorretos")
 
     token = create_session(user["id"])
     response.set_cookie("echo_session", token, httponly=True, samesite="lax", max_age=30 * 24 * 3600)
+    logger.info("Login OK: %s → session created", body.email)
     return {"ok": True, "name": user["name"]}
 
 
@@ -263,22 +270,46 @@ async def logout(request: Request, response: Response):
     return {"ok": True}
 
 
-class ResetPasswordRequest(BaseModel):
-    email: str
-    new_password: str
+class AdminRequest(BaseModel):
     admin_key: str
+    action: str = "status"  # status | reset_password | list_users
+    email: str = ""
+    new_password: str = ""
 
 
-@app.post("/api/auth/reset-password")
-async def reset_password_route(body: ResetPasswordRequest):
+@app.post("/api/admin")
+async def admin_endpoint(body: AdminRequest):
+    """Endpoint admin para debug e manutenção."""
     if body.admin_key != "echo-admin-2026":
         raise HTTPException(403, "Acesso negado")
-    if len(body.new_password) < 6:
-        raise HTTPException(400, "Senha deve ter pelo menos 6 caracteres")
-    ok = reset_user_password(body.email, body.new_password)
-    if not ok:
-        raise HTTPException(404, "Usuário não encontrado")
-    return {"ok": True, "message": "Senha atualizada"}
+
+    if body.action == "list_users":
+        users = list_users()
+        logger.info("Admin: list_users — %d usuários", len(users))
+        return {"users": users, "total": len(users)}
+
+    if body.action == "reset_password":
+        if not body.email or len(body.new_password) < 6:
+            raise HTTPException(400, "Email e senha (min 6 chars) obrigatórios")
+        ok = reset_user_password(body.email, body.new_password)
+        if not ok:
+            raise HTTPException(404, "Usuário não encontrado")
+        logger.info("Admin: senha resetada para %s", body.email)
+        return {"ok": True, "message": "Senha atualizada"}
+
+    # Default: status
+    from src.database import DB_PATH
+    db_exists = os.path.exists(DB_PATH)
+    db_size = os.path.getsize(DB_PATH) if db_exists else 0
+    users = list_users()
+    return {
+        "status": "ok",
+        "db_path": DB_PATH,
+        "db_exists": db_exists,
+        "db_size_kb": round(db_size / 1024, 1),
+        "total_users": len(users),
+        "users": [{"id": u["id"], "email": u["email"]} for u in users],
+    }
 
 
 # --- Upload PDF ---
