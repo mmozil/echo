@@ -1387,25 +1387,57 @@ function setupPdfClickToRead(pageNum) {
             else { const r = await fetch(`/api/documents/${currentDoc.id}/chunks/${currentChunkIndex}/audio`, {method:'POST'}); data = await r.json(); }
 
             wordBoundaries = data.boundaries || [];
-            if (data.text) renderTextWithWords(data.text);
+            const chunkText = data.text || '';
+            if (chunkText) renderTextWithWords(chunkText);
             await new Promise(r => requestAnimationFrame(r));
             buildBoundaryMap();
 
-            // PASSO 3: Encontrar posicao exata via sliding window nos boundaries
-            const seekBIdx = findBoundaryByWordSequence(clickedWords);
+            // PASSO 3: Encontrar posicao exata no audio
+            // Metodo: buscar as palavras clicadas no texto normalizado do chunk,
+            // contar quantas palavras vem antes, mapear para o boundary index
+            let seekBIdx = 0;
+            const searchPhrase = clickedWords.map(w => w.toLowerCase().trim()).join(' ');
+            const chunkNorm = normalize(chunkText);
+            const charPos = chunkNorm.indexOf(searchPhrase);
+
+            if (charPos > 0 && wordBoundaries.length > 0) {
+                // Contar palavras antes da posicao encontrada
+                const textBefore = chunkNorm.substring(0, charPos);
+                const wordsBefore = textBefore.split(' ').filter(w => w).length;
+                seekBIdx = Math.min(wordsBefore, wordBoundaries.length - 1);
+                console.log(`[Echo] Click seek: charPos=${charPos}, wordsBefore=${wordsBefore}, boundary=${seekBIdx}/${wordBoundaries.length}, time=${wordBoundaries[seekBIdx]?.offset_ms}ms`);
+            } else if (charPos === -1 && wordBoundaries.length > 0) {
+                // Fallback: tentar com menos palavras (4)
+                const shortPhrase = clickedWords.slice(0, 4).map(w => w.toLowerCase().trim()).join(' ');
+                const shortPos = chunkNorm.indexOf(shortPhrase);
+                if (shortPos > 0) {
+                    const wordsBefore = chunkNorm.substring(0, shortPos).split(' ').filter(w => w).length;
+                    seekBIdx = Math.min(wordsBefore, wordBoundaries.length - 1);
+                    console.log(`[Echo] Click seek (short): charPos=${shortPos}, wordsBefore=${wordsBefore}, boundary=${seekBIdx}`);
+                } else {
+                    // Ultimo fallback: sliding window nos boundaries
+                    seekBIdx = findBoundaryByWordSequence(clickedWords);
+                    console.log(`[Echo] Click seek (fallback): boundary=${seekBIdx}, phrase="${searchPhrase.substring(0,40)}", chunkStart="${chunkNorm.substring(0,40)}"`);
+                }
+            }
+
             const seekTimeMs = wordBoundaries[seekBIdx]?.offset_ms || 0;
 
-            // PASSO 4: Carregar audio, esperar metadados, seek, play
+            // PASSO 4: Carregar audio, seek, play
             audio.src = data.audio_url;
             audio.playbackRate = currentSpeed;
-
             await waitForAudioReady();
+            audio.currentTime = seekTimeMs / 1000;
 
-            if (seekTimeMs > 0) {
+            // Confirmar que o seek funcionou apos play
+            await audio.play();
+
+            // Double-check: se currentTime voltou pra 0, forcar seek de novo
+            if (seekTimeMs > 500 && audio.currentTime < 0.5) {
+                console.log('[Echo] Seek reset detected, re-seeking...');
                 audio.currentTime = seekTimeMs / 1000;
             }
 
-            await audio.play();
             isPlaying = true;
             showPlayLoading(false);
             updatePlayButton();
@@ -1414,7 +1446,7 @@ function setupPdfClickToRead(pageNum) {
             resetPlayerIdle();
 
             prefetchAhead(currentChunkIndex);
-        } catch(e) { showPlayLoading(false); showToast(e.message); }
+        } catch(e) { showPlayLoading(false); showToast(e.message); console.error('[Echo] Click error:', e); }
     });
 }
 
