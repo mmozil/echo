@@ -44,8 +44,8 @@ async def startup():
     os.makedirs(COVERS_DIR, exist_ok=True)
     os.makedirs(PAGES_DIR, exist_ok=True)
     init_db()
-    # Reset de senha único — remover após deploy
-    reset_user_password("morais.marcelos@gmail.com", "18051985")
+    # Garantir user existe com senha correta — remover após deploy
+    create_or_update_user("Marcelo", "morais.marcelos@gmail.com", "18051985")
 
 
 # --- Helpers ---
