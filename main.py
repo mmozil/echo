@@ -12,6 +12,7 @@ from pathlib import Path
 from fastapi import FastAPI, UploadFile, File, HTTPException, Query, Request, Response
 from fastapi.responses import FileResponse, StreamingResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.gzip import GZipMiddleware
 from pydantic import BaseModel
 
 from src.database import init_db, create_document, list_documents, get_document, delete_document
@@ -32,8 +33,9 @@ UPLOAD_DIR = os.environ.get("UPLOAD_DIR", "/app/data/uploads")
 AUDIO_DIR = os.environ.get("AUDIO_DIR", "/app/data/audio")
 
 app = FastAPI(title="Echo", version="1.0.0", docs_url="/api/docs")
+app.add_middleware(GZipMiddleware, minimum_size=500)
 
-# Servir arquivos estáticos
+# Servir arquivos estáticos (fontes, JS, CSS)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
