@@ -15,7 +15,7 @@ from pydantic import BaseModel
 
 from src.database import init_db, create_document, list_documents, get_document, delete_document
 from src.database import save_chunk, get_chunks, get_chunk, update_chunk_audio, update_progress, get_progress
-from src.database import create_user, authenticate_user, create_session, get_user_by_session, delete_session
+from src.database import create_user, authenticate_user, create_session, get_user_by_session, delete_session, reset_user_password
 from src.pdf_parser import extract_text_from_pdf, chunk_pages, get_pdf_info, extract_cover, render_page, get_toc, get_word_positions_on_page
 
 PAGES_DIR = os.environ.get("PAGES_DIR", "/app/data/pages")
@@ -261,6 +261,24 @@ async def logout(request: Request, response: Response):
         delete_session(token)
     response.delete_cookie("echo_session")
     return {"ok": True}
+
+
+class ResetPasswordRequest(BaseModel):
+    email: str
+    new_password: str
+    admin_key: str
+
+
+@app.post("/api/auth/reset-password")
+async def reset_password_route(body: ResetPasswordRequest):
+    if body.admin_key != "echo-admin-2026":
+        raise HTTPException(403, "Acesso negado")
+    if len(body.new_password) < 6:
+        raise HTTPException(400, "Senha deve ter pelo menos 6 caracteres")
+    ok = reset_user_password(body.email, body.new_password)
+    if not ok:
+        raise HTTPException(404, "Usuário não encontrado")
+    return {"ok": True, "message": "Senha atualizada"}
 
 
 # --- Upload PDF ---

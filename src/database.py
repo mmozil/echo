@@ -102,6 +102,18 @@ def create_user(name: str, email: str, password: str) -> str | None:
     return user_id
 
 
+def reset_user_password(email: str, new_password: str) -> bool:
+    conn = get_db()
+    row = conn.execute("SELECT id FROM users WHERE email = ?", (email.lower().strip(),)).fetchone()
+    if not row:
+        conn.close()
+        return False
+    conn.execute("UPDATE users SET password_hash = ? WHERE email = ?", (_hash_password(new_password), email.lower().strip()))
+    conn.commit()
+    conn.close()
+    return True
+
+
 def authenticate_user(email: str, password: str) -> dict | None:
     conn = get_db()
     row = conn.execute("SELECT * FROM users WHERE email = ?", (email.lower().strip(),)).fetchone()
