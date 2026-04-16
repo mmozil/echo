@@ -133,9 +133,15 @@
         /* PDF view - canvas-based */
         .pdf-main { flex: 1; overflow-y: auto; display: flex; flex-direction: column; align-items: center; padding: 24px; gap: 8px; }
         .pdf-main.hidden { display: none; }
-        .pdf-page { max-width: 700px; width: 100%; border-radius: 4px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); background: white; position: relative; cursor: pointer; }
+        .pdf-page { max-width: 700px; width: 100%; border-radius: 4px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); background: white; position: relative; }
         .pdf-page canvas { width: 100%; display: block; border-radius: 4px; }
         .pdf-page-num { text-align: center; font-size: 11px; color: var(--mist); padding: 6px 0 16px; }
+
+        /* Text layer do PDF.js — spans invisiveis sobre o canvas, clicaveis */
+        .pdf-text-layer { position: absolute; inset: 0; overflow: hidden; line-height: 1; z-index: 5; }
+        .pdf-text-layer span { position: absolute; color: transparent; white-space: pre; cursor: pointer; transition: background 0.1s; }
+        .pdf-text-layer span:hover { background: rgba(37,99,235,0.12); border-radius: 2px; }
+        .pdf-text-layer span.playing { background: rgba(37,99,235,0.35); border-radius: 2px; }
 
         /* Highlight overlay no PDF */
         .pdf-highlight { position: absolute; background: rgba(37,99,235,0.45); pointer-events: none; border-radius: 2px; z-index: 2; }
@@ -628,8 +634,6 @@ async function loadPdfDocument() {
         for (let p = 1; p <= pdfDoc.numPages; p++) {
             const el = document.getElementById(`pdf-page-${p}`);
             if (el) observer.observe(el);
-            // Setup click-to-read
-            if (settings.clickToListen) setupPdfClickToRead(p);
         }
 
         // Render first visible pages immediately
@@ -665,7 +669,7 @@ async function renderPdfPage(pageNum) {
 
     try {
         const page = await pdfDoc.getPage(pageNum);
-        const scale = 1.5; // High quality
+        const scale = 1.5;
         const viewport = page.getViewport({ scale });
         const canvas = document.getElementById(`pdf-canvas-${pageNum}`);
         if (!canvas) return;
@@ -675,6 +679,53 @@ async function renderPdfPage(pageNum) {
         const ctx = canvas.getContext('2d');
 
         await page.render({ canvasContext: ctx, viewport }).promise;
+
+        // TEXT LAYER: spans invisiveis sobre o canvas (como Speechify/PSPDFKit)
+        const pageEl = document.getElementById(`pdf-page-${pageNum}`);
+        if (!pageEl) return;
+
+        const textContent = await page.getTextContent();
+        const textLayerDiv = document.createElement('div');
+        textLayerDiv.className = 'pdf-text-layer';
+
+        // Escala do canvas para o elemento na tela
+        const canvasDisplayWidth = canvas.clientWidth || canvas.offsetWidth;
+        const displayScale = canvasDisplayWidth / viewport.width;
+
+        for (const item of textContent.items) {
+            if (!item.str || !item.str.trim()) continue;
+
+            // item.transform = [scaleX, skewY, skewX, scaleY, translateX, translateY]
+            const tx = window.pdfjsLib.Util.transform(viewport.transform, item.transform);
+            const fontSize = Math.sqrt(tx[0] * tx[0] + tx[1] * tx[1]);
+            const left = tx[4];
+            const top = tx[5] - fontSize; // PDF y e a baseline, subir pelo fontSize
+
+            const span = document.createElement('span');
+            span.textContent = item.str;
+            span.dataset.text = item.str;
+            span.dataset.page = pageNum;
+            // Posicionar em % para ser responsivo
+            span.style.left = (left / viewport.width * 100) + '%';
+            span.style.top = (top / viewport.height * 100) + '%';
+            span.style.fontSize = (fontSize / viewport.height * 100) + 'vh';
+            // Usar transform para escala horizontal
+            const scaleX = item.width ? (item.width * viewport.scale / (fontSize * item.str.length * 0.6)) : 1;
+            span.style.transform = `scaleX(${Math.min(scaleX, 2).toFixed(2)})`;
+            span.style.transformOrigin = '0 0';
+
+            textLayerDiv.appendChild(span);
+        }
+
+        pageEl.appendChild(textLayerDiv);
+
+        // Click handler na text layer: clicar num span = tocar a partir desse texto
+        textLayerDiv.addEventListener('click', (e) => {
+            const span = e.target.closest('span');
+            if (!span || !span.dataset.text) return;
+            handleTextLayerClick(pageNum, span, textLayerDiv);
+        });
+
     } catch(e) {
         console.warn(`Erro ao renderizar pagina ${pageNum}:`, e);
         renderedPages[pageNum] = false;
@@ -691,7 +742,7 @@ function loadPdfPagesFallback() {
     }
     pv.innerHTML = html;
     for (let p = 1; p <= currentDoc.total_pages; p++) {
-        if (settings.clickToListen) setupPdfClickToRead(p);
+        // Text layer click-to-read e configurado dentro de renderPdfPage()
     }
     const chunk = currentChunks[currentChunkIndex];
     if (chunk && chunk.page > 1) {
@@ -1300,142 +1351,89 @@ function waitForAudioReady() {
     });
 }
 
-function setupPdfClickToRead(pageNum) {
-    const pageEl = document.getElementById(`pdf-page-${pageNum}`);
-    if (!pageEl || pageEl.dataset.clickSetup) return;
-    pageEl.dataset.clickSetup = 'true';
+// Click handler para a text layer do PDF.js
+// O span clicado contem o texto exato do PDF — busca direta no chunk
+async function handleTextLayerClick(pageNum, clickedSpan, textLayerDiv) {
+    if (!settings.clickToListen) return;
 
-    // Pre-load word positions eagerly
-    loadPageWords(pageNum);
+    // Pegar o texto do span clicado + os proximos spans (contexto)
+    const allSpans = [...textLayerDiv.querySelectorAll('span[data-text]')];
+    const spanIdx = allSpans.indexOf(clickedSpan);
+    const clickedText = allSpans.slice(spanIdx, spanIdx + 10).map(s => s.dataset.text).join(' ');
 
-    pageEl.addEventListener('mousemove', async (e) => {
-        if (!settings.clickToListen) return;
-        const canvas = pageEl.querySelector('canvas') || pageEl.querySelector('img');
-        if (!canvas) return;
-        const rect = canvas.getBoundingClientRect();
-        const relY = (e.clientY - rect.top) / rect.height;
+    // Highlight visual no span clicado
+    allSpans.forEach(s => s.classList.remove('playing'));
+    clickedSpan.classList.add('playing');
 
-        pageEl.querySelectorAll('.pdf-hover-line').forEach(h => h.remove());
+    showPlayLoading(true);
+    lastPdfHighlightIdx = -1;
 
-        const words = pageWordPositions[pageNum] || await loadPageWords(pageNum);
-        if (!words.length) return;
+    try {
+        // PASSO 1: Encontrar o chunk que contem este texto
+        const chunkIdx = await findCorrectChunk(pageNum, clickedText.split(/\s+/));
+        currentChunkIndex = chunkIdx;
 
-        let closestLine = null, closestDist = Infinity;
-        for (const w of words) {
-            const midY = (w.y0 + w.y1) / 2;
-            const dist = Math.abs(relY - midY);
-            if (dist < closestDist) { closestDist = dist; closestLine = w; }
-        }
+        // PASSO 2: Obter audio + boundaries
+        let data;
+        if (prefetchCache[currentChunkIndex]) { data = prefetchCache[currentChunkIndex]; delete prefetchCache[currentChunkIndex]; }
+        else { const r = await fetch(`/api/documents/${currentDoc.id}/chunks/${currentChunkIndex}/audio`, {method:'POST'}); data = await r.json(); }
 
-        if (closestLine && closestDist < 0.03) {
-            const lineWords = words.filter(w => Math.abs(w.y0 - closestLine.y0) < 0.005);
-            if (lineWords.length) {
-                const minX = Math.min(...lineWords.map(w => w.x0));
-                const maxX = Math.max(...lineWords.map(w => w.x1));
-                const hl = document.createElement('div');
-                hl.className = 'pdf-hover-line';
-                hl.style.left = (minX * 100) + '%';
-                hl.style.top = (closestLine.y0 * 100) + '%';
-                hl.style.width = ((maxX - minX) * 100) + '%';
-                hl.style.height = ((closestLine.y1 - closestLine.y0) * 100) + '%';
-                pageEl.appendChild(hl);
+        wordBoundaries = data.boundaries || [];
+        if (data.text) renderTextWithWords(data.text);
+        await new Promise(r => requestAnimationFrame(r));
+        buildBoundaryMap();
+
+        // PASSO 3: Encontrar posicao no audio
+        // O texto do span vem direto do PDF.js (mesma fonte do chunk) — match confiavel
+        let seekTimeSec = 0;
+        if (wordBoundaries.length > 0) {
+            const chunkText = data.text || await getChunkFullText(currentChunkIndex);
+            const chunkNorm = normalize(chunkText);
+            const clickNorm = normalize(clickedText.split(/\s+/).slice(0, 8).join(' '));
+
+            const charPos = chunkNorm.indexOf(clickNorm);
+            if (charPos > 0) {
+                // Contar palavras antes do ponto encontrado
+                const wordsBefore = chunkNorm.substring(0, charPos).split(' ').filter(w => w).length;
+                const bIdx = Math.min(wordsBefore, wordBoundaries.length - 1);
+                seekTimeSec = (wordBoundaries[bIdx]?.offset_ms || 0) / 1000;
+            } else {
+                // Fallback: tentar frase mais curta
+                const shortNorm = normalize(clickedText.split(/\s+/).slice(0, 3).join(' '));
+                const shortPos = chunkNorm.indexOf(shortNorm);
+                if (shortPos > 0) {
+                    const wordsBefore = chunkNorm.substring(0, shortPos).split(' ').filter(w => w).length;
+                    const bIdx = Math.min(wordsBefore, wordBoundaries.length - 1);
+                    seekTimeSec = (wordBoundaries[bIdx]?.offset_ms || 0) / 1000;
+                }
             }
         }
-    });
 
-    pageEl.addEventListener('mouseleave', () => {
-        pageEl.querySelectorAll('.pdf-hover-line').forEach(h => h.remove());
-    });
+        // PASSO 4: Load, seek, play
+        audio.src = data.audio_url;
+        audio.playbackRate = currentSpeed;
+        await waitForAudioReady();
 
-    pageEl.addEventListener('click', async (e) => {
-        if (!settings.clickToListen) return;
-        const canvas = pageEl.querySelector('canvas') || pageEl.querySelector('img');
-        if (!canvas) return;
-
-        const rect = canvas.getBoundingClientRect();
-        const relY = (e.clientY - rect.top) / rect.height; // 0.0 = topo, 1.0 = base
-
-        // Abordagem simples: posicao vertical do clique = posicao no audio
-        // Se clicou em 70% da pagina, toca a partir de 70% do chunk
-
-        // Achar qual chunk cobre esta pagina
-        // Se ha multiplos chunks nesta pagina, usar relY para decidir qual
-        const pageChunks = [];
-        for (let i = 0; i < currentChunks.length; i++) {
-            if (currentChunks[i].page === pageNum) pageChunks.push(i);
-        }
-        if (!pageChunks.length) {
-            // Fallback: chunk mais proximo
-            pageChunks.push(findChunkForPage(pageNum));
-        }
-
-        // Se 1 chunk: seek proporcional ao relY
-        // Se N chunks: dividir a pagina em N faixas
-        let targetChunkIdx, seekRatio;
-        if (pageChunks.length === 1) {
-            targetChunkIdx = pageChunks[0];
-            seekRatio = relY; // 0-1
-        } else {
-            // Dividir pagina em faixas iguais para cada chunk
-            const bandSize = 1.0 / pageChunks.length;
-            const bandIdx = Math.min(Math.floor(relY / bandSize), pageChunks.length - 1);
-            targetChunkIdx = pageChunks[bandIdx];
-            // Posicao dentro da faixa
-            seekRatio = (relY - bandIdx * bandSize) / bandSize;
-        }
-
-        currentChunkIndex = targetChunkIdx;
-        showPlayLoading(true);
-        lastPdfHighlightIdx = -1;
-
-        try {
-            // Obter audio do chunk
-            let data;
-            if (prefetchCache[currentChunkIndex]) { data = prefetchCache[currentChunkIndex]; delete prefetchCache[currentChunkIndex]; }
-            else { const r = await fetch(`/api/documents/${currentDoc.id}/chunks/${currentChunkIndex}/audio`, {method:'POST'}); data = await r.json(); }
-
-            wordBoundaries = data.boundaries || [];
-            if (data.text) renderTextWithWords(data.text);
-            await new Promise(r => requestAnimationFrame(r));
-            buildBoundaryMap();
-
-            // Seek proporcional: relY do clique = posicao no audio
-            let seekTimeSec = 0;
-            if (wordBoundaries.length > 0 && seekRatio > 0.05) {
-                const targetBIdx = Math.floor(seekRatio * wordBoundaries.length);
-                const safeBIdx = Math.min(targetBIdx, wordBoundaries.length - 1);
-                seekTimeSec = wordBoundaries[safeBIdx].offset_ms / 1000;
-            }
-
-            // Carregar, seek, play
-            audio.src = data.audio_url;
-            audio.playbackRate = currentSpeed;
-
-            // Usar evento seeked para garantir que o seek completou
-            const seekDone = new Promise(resolve => {
-                if (seekTimeSec < 0.1) return resolve();
+        if (seekTimeSec > 0.1) {
+            audio.currentTime = seekTimeSec;
+            // Esperar seek completar
+            await new Promise(resolve => {
                 const onSeeked = () => { audio.removeEventListener('seeked', onSeeked); resolve(); };
                 audio.addEventListener('seeked', onSeeked);
-                setTimeout(resolve, 2000); // safety timeout
+                setTimeout(resolve, 2000);
             });
+        }
 
-            await waitForAudioReady();
-            if (seekTimeSec > 0.1) {
-                audio.currentTime = seekTimeSec;
-                await seekDone;
-            }
+        await audio.play();
+        isPlaying = true;
+        showPlayLoading(false);
+        updatePlayButton();
+        updateChapterDisplay();
+        startHighlightLoop();
+        resetPlayerIdle();
+        prefetchAhead(currentChunkIndex);
 
-            await audio.play();
-            isPlaying = true;
-            showPlayLoading(false);
-            updatePlayButton();
-            updateChapterDisplay();
-            startHighlightLoop();
-            resetPlayerIdle();
-
-            prefetchAhead(currentChunkIndex);
-        } catch(e) { showPlayLoading(false); showToast(e.message); }
-    });
+    } catch(e) { showPlayLoading(false); showToast(e.message); }
 }
 
 // === VOZES ===
