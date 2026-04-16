@@ -225,6 +225,16 @@
         .loading-spinner { width: 18px; height: 18px; border: 2px solid var(--border); border-top-color: var(--ink); border-radius: 50%; animation: spin 0.6s linear infinite; }
         @keyframes spin { to { transform: rotate(360deg); } }
 
+        /* Overlay global de loading */
+        .loading-overlay { position: fixed; inset: 0; z-index: 9999; background: rgba(250,251,252,0.92); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; opacity: 0; pointer-events: none; transition: opacity 0.2s; backdrop-filter: blur(4px); }
+        .loading-overlay.active { opacity: 1; pointer-events: all; }
+        .loading-overlay .lo-spinner { width: 36px; height: 36px; border: 3px solid var(--border); border-top-color: var(--ink); border-radius: 50%; animation: spin 0.7s linear infinite; }
+        .loading-overlay .lo-title { font-family: var(--font-d); font-size: 16px; font-weight: 600; color: var(--ink); }
+        .loading-overlay .lo-sub { font-size: 13px; color: var(--mist); max-width: 260px; text-align: center; }
+        .loading-overlay .lo-bar-wrap { width: 200px; height: 4px; background: var(--border); border-radius: 4px; overflow: hidden; }
+        .loading-overlay .lo-bar { height: 100%; background: var(--ink); border-radius: 4px; width: 0%; transition: width 0.3s; }
+        [data-theme="dark"] .loading-overlay { background: rgba(15,23,42,0.92); }
+
         .toast { position: fixed; bottom: 80px; right: 24px; background: var(--ink); color: var(--snow); padding: 10px 18px; border-radius: 8px; font-size: 12px; box-shadow: 0 4px 16px rgba(0,0,0,0.15); z-index: 1000; transform: translateY(60px); opacity: 0; transition: all 0.3s; }
         .toast.show { transform: translateY(0); opacity: 1; }
 
@@ -448,6 +458,12 @@
     </div>
 </div>
 
+<div class="loading-overlay" id="loadingOverlay">
+    <div class="lo-spinner"></div>
+    <div class="lo-title" id="loTitle">Carregando...</div>
+    <div class="lo-sub" id="loSub"></div>
+    <div class="lo-bar-wrap" id="loBarWrap" style="display:none"><div class="lo-bar" id="loBar"></div></div>
+</div>
 <div class="toast" id="toast"></div>
 <audio id="audioPlayer"></audio>
 
@@ -566,15 +582,38 @@ function setupDragDrop() {
     a.addEventListener('drop', ev => { const f=ev.dataTransfer.files[0]; if(f&&f.type==='application/pdf') handleFileUpload(f); });
 }
 
+function showLoading(title, sub) {
+    document.getElementById('loTitle').textContent = title || 'Carregando...';
+    document.getElementById('loSub').textContent = sub || '';
+    document.getElementById('loBarWrap').style.display = 'none';
+    document.getElementById('loBar').style.width = '0%';
+    document.getElementById('loadingOverlay').classList.add('active');
+}
+function updateLoading(title, sub, pct) {
+    if (title) document.getElementById('loTitle').textContent = title;
+    if (sub) document.getElementById('loSub').textContent = sub;
+    if (pct !== undefined) {
+        document.getElementById('loBarWrap').style.display = 'block';
+        document.getElementById('loBar').style.width = Math.min(100, pct) + '%';
+    }
+}
+function hideLoading() { document.getElementById('loadingOverlay').classList.remove('active'); }
+
 async function handleFileUpload(file) {
-    if (!file||!file.name.toLowerCase().endsWith('.pdf')) { showToast('Apenas PDFs'); return; }
-    const a = document.getElementById('uploadArea');
-    a.classList.add('uploading');
-    a.innerHTML = '<div class="loading-spinner" style="margin:0 auto"></div><h3 style="margin-top:10px">Processando...</h3>';
+    if (!file || !file.name.toLowerCase().endsWith('.pdf')) { showToast('Apenas PDFs'); return; }
+    showLoading('Enviando PDF...', file.name);
     const fd = new FormData(); fd.append('file', file);
-    try { const r = await fetch('/api/documents',{method:'POST',body:fd}); const d = await r.json(); if(!r.ok) throw new Error(d.detail); showToast(`"${d.title}" -- ${d.total_chunks} trechos`); loadDocuments(); }
-    catch(e) { showToast(e.message); }
-    finally { a.classList.remove('uploading'); a.innerHTML = '<div class="upload-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg></div><h3>Arraste um PDF ou clique para enviar</h3><p>Livros, artigos, apostilas -- o Antonio le para voce</p>'; }
+    try {
+        updateLoading('Processando...', 'Extraindo texto e gerando audio');
+        const r = await fetch('/api/documents', { method: 'POST', body: fd });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.detail || 'Erro ao processar PDF');
+        updateLoading('Pronto!', `"${d.title}" — ${d.total_chunks} trechos`, 100);
+        setTimeout(() => { hideLoading(); loadDocuments(); }, 800);
+    } catch (e) {
+        hideLoading();
+        showToast(e.message);
+    }
     document.getElementById('fileInput').value = '';
 }
 
@@ -605,44 +644,64 @@ function renderDocuments(docs) {
     }).join('')}</div>`;
 }
 
-async function deleteDoc(id,title) { if(!confirm(`Remover "${title}"?`)) return; await fetch(`/api/documents/${id}`,{method:'DELETE'}); showToast('Removido'); loadDocuments(); }
+async function deleteDoc(id, title) {
+    if (!confirm(`Remover "${title}"?`)) return;
+    showLoading('Removendo...', title);
+    try {
+        const r = await fetch(`/api/documents/${id}`, { method: 'DELETE' });
+        if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.detail || 'Erro ao remover'); }
+        showToast('Removido');
+        loadDocuments();
+    } catch (e) { showToast(e.message); }
+    hideLoading();
+}
 
 // === READER ===
 async function openDocument(docId) {
-    const r = await fetch(`/api/documents/${docId}`); const d = await r.json();
-    currentDoc = d.document; currentChunks = d.chunks; currentChunkIndex = d.progress?.current_chunk||0;
-    prefetchCache = {}; renderedPages = {}; pageWordPositions = {}; chunkTextCache = {};
+    showLoading('Abrindo documento...', 'Carregando páginas e texto');
+    try {
+        const r = await fetch(`/api/documents/${docId}`);
+        if (!r.ok) throw new Error('Documento não encontrado');
+        const d = await r.json();
+        currentDoc = d.document; currentChunks = d.chunks; currentChunkIndex = d.progress?.current_chunk||0;
+        prefetchCache = {}; renderedPages = {}; pageWordPositions = {}; chunkTextCache = {};
 
-    document.getElementById('readerTitle').textContent = currentDoc.title;
-    document.getElementById('totalPages').textContent = currentDoc.total_pages;
-    document.getElementById('pageInput').max = currentDoc.total_pages;
+        document.getElementById('readerTitle').textContent = currentDoc.title;
+        document.getElementById('totalPages').textContent = currentDoc.total_pages;
+        document.getElementById('pageInput').max = currentDoc.total_pages;
 
-    document.getElementById('reader').classList.add('active');
-    document.getElementById('libraryView').classList.add('hidden');
-    document.querySelector('.header').style.display = 'none';
+        document.getElementById('reader').classList.add('active');
+        document.getElementById('libraryView').classList.add('hidden');
+        document.querySelector('.header').style.display = 'none';
 
-    // Load PDF.js document + TOC + text
-    loadToc();
-    await loadPdfDocument();
-    await loadChunkText(currentChunkIndex);
+        updateLoading('Renderizando...', `${currentDoc.total_pages} páginas`);
 
-    // Scroll handlers
-    const scrollHandler = () => { if(programmaticScroll) return; userScrolling = true; clearTimeout(userScrollTimer); userScrollTimer = setTimeout(() => { userScrolling = false; }, 5000); };
-    const pdfView = document.getElementById('pdfView');
-    pdfView.addEventListener('scroll', scrollHandler, {passive:true});
-    pdfView.addEventListener('wheel', scrollHandler, {passive:true});
-    pdfView.addEventListener('touchmove', scrollHandler, {passive:true});
-    document.getElementById('textView').addEventListener('scroll', scrollHandler, {passive:true});
-    document.getElementById('textView').addEventListener('wheel', scrollHandler, {passive:true});
+        // Load PDF.js document + TOC + text
+        loadToc();
+        await loadPdfDocument();
+        await loadChunkText(currentChunkIndex);
 
-    // Track current page from scroll
-    pdfView.addEventListener('scroll', updateCurrentPageFromScroll, {passive:true});
+        // Scroll handlers
+        const scrollHandler = () => { if(programmaticScroll) return; userScrolling = true; clearTimeout(userScrollTimer); userScrollTimer = setTimeout(() => { userScrolling = false; }, 5000); };
+        const pdfView = document.getElementById('pdfView');
+        pdfView.addEventListener('scroll', scrollHandler, {passive:true});
+        pdfView.addEventListener('wheel', scrollHandler, {passive:true});
+        pdfView.addEventListener('touchmove', scrollHandler, {passive:true});
+        document.getElementById('textView').addEventListener('scroll', scrollHandler, {passive:true});
+        document.getElementById('textView').addEventListener('wheel', scrollHandler, {passive:true});
 
-    updateChapterDisplay();
-    prefetchChunks(currentChunkIndex, 5);
-    resetPlayerIdle();
+        // Track current page from scroll
+        pdfView.addEventListener('scroll', updateCurrentPageFromScroll, {passive:true});
 
-    if (settings.autoplay) { setTimeout(() => playCurrentChunk(), 500); }
+        updateChapterDisplay();
+        prefetchChunks(currentChunkIndex, 5);
+        resetPlayerIdle();
+
+        if (settings.autoplay) { setTimeout(() => playCurrentChunk(), 500); }
+    } catch (e) {
+        showToast(e.message);
+    }
+    hideLoading();
 }
 
 // === PDF.JS CLIENT-SIDE RENDERING ===
