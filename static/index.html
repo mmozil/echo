@@ -98,7 +98,8 @@
 
         /* Page indicator */
         .page-indicator { display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--slate); flex-shrink: 0; }
-        .page-indicator input { width: 36px; text-align: center; border: 1px solid var(--border); border-radius: 4px; padding: 2px 4px; font-size: 12px; font-family: var(--font-m); background: var(--snow); color: var(--ink); }
+        .page-indicator input { width: 36px; text-align: center; border: 1px solid var(--border); border-radius: 4px; padding: 2px 4px; font-size: 12px; font-family: var(--font-m); background: var(--snow); color: var(--ink); -moz-appearance: textfield; }
+        .page-indicator input::-webkit-outer-spin-button, .page-indicator input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
         .page-indicator input:focus { outline: none; border-color: var(--ink); }
 
         /* Search bar */
