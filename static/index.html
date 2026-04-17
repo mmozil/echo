@@ -1338,8 +1338,6 @@ function highlightWordOnPdf(boundaryIdx, pageNum) {
     const bText = wordBoundaries[boundaryIdx]?.text?.toLowerCase().replace(/[.,;:!?"'()\[\]]/g, '') || '';
     let bestIdx = targetWordIdx;
     let bestDist = Infinity;
-
-    // Procurar num raio de +-15 palavras ao redor da posicao estimada
     for (let i = Math.max(0, targetWordIdx - 15); i < Math.min(words.length, targetWordIdx + 15); i++) {
         const wText = words[i].word.toLowerCase().replace(/[.,;:!?"'()\[\]]/g, '');
         if (wText === bText || wText.startsWith(bText) || bText.startsWith(wText)) {
@@ -1348,12 +1346,23 @@ function highlightWordOnPdf(boundaryIdx, pageNum) {
         }
     }
 
-    const w = words[bestIdx];
-    if (!w) return;
+    if (!words[bestIdx]) return;
 
-    // Highlight da linha inteira (estilo Speechify)
-    const lineWords = words.filter(lw => Math.abs(lw.y0 - w.y0) < 0.005);
-    for (const lw of lineWords) {
+    // Encontrar limites da frase (até ponto anterior e próximo ponto)
+    let sentStart = bestIdx, sentEnd = bestIdx;
+    for (let i = bestIdx - 1; i >= 0; i--) {
+        if (/[.!?;:]$/.test(words[i].word)) break;
+        sentStart = i;
+    }
+    for (let i = bestIdx; i < words.length; i++) {
+        sentEnd = i;
+        if (/[.!?;:]$/.test(words[i].word)) break;
+    }
+
+    // Highlight de todas as palavras da frase
+    for (let i = sentStart; i <= sentEnd; i++) {
+        const lw = words[i];
+        if (!lw) continue;
         const overlay = document.createElement('div');
         overlay.className = 'pdf-highlight';
         overlay.style.left = (lw.x0 * 100) + '%';
