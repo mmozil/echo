@@ -1047,10 +1047,6 @@ function updateHighlight() {
     let abi = -1;
     for (let i = 0; i < wordBoundaries.length; i++) { const b = wordBoundaries[i]; if (ms >= b.offset_ms && ms < b.offset_ms + b.duration_ms + 300) abi = i; }
     const awi = abi >= 0 ? boundaryToWordMap[abi] : -1;
-    const lsi = abi > 0 ? boundaryToWordMap[abi - 1] : -1;
-
-    // Rebuild sentence cache se necessario
-    if (!_sentenceRanges.length && words.length) buildSentenceRanges(words);
 
     // Encontrar a frase que contem a palavra ativa
     let sentStart = -1, sentEnd = -1;
@@ -1092,6 +1088,9 @@ function renderTextWithWords(text) {
         html += '</p>';
     }
     tv.innerHTML = html;
+    // Buildar cache de frases imediatamente com os spans criados
+    _sentenceRanges = [];
+    buildSentenceRanges(tv.querySelectorAll('.word'));
 }
 
 async function loadChunkText(index) {
