@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, useCallback, memo } from 'react';
 import {
-  View, Text, Pressable, ActivityIndicator, Image, FlatList, ScrollView,
+  View, Text, Pressable, ActivityIndicator, FlatList, ScrollView,
   Dimensions, Alert, StyleSheet,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, router } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
@@ -233,12 +234,14 @@ export default function Reader() {
   const doc = data.document;
   const chunk = data.chunks[chunkIdx];
 
+  // Tempo: prefere duração real do áudio carregado, depois server (DB), depois estimativa
   const AVG = 50000;
+  const durOf = (i: number) => chunkDur.current[i] || data.chunks[i]?.duration_ms || AVG;
   let elapsed = 0;
-  for (let i = 0; i < chunkIdx; i++) elapsed += chunkDur.current[i] || AVG;
+  for (let i = 0; i < chunkIdx; i++) elapsed += durOf(i);
   elapsed += posMs;
   let total = 0;
-  for (let i = 0; i < data.chunks.length; i++) total += chunkDur.current[i] || AVG;
+  for (let i = 0; i < data.chunks.length; i++) total += durOf(i);
   const pct = total > 0 ? (elapsed / total) * 100 : 0;
 
   return (
@@ -347,9 +350,11 @@ const PdfPage = memo(function PdfPage({ docId, page, words, isActive, boundaries
       style={styles.pageWrap}
     >
       <Image
-        source={{ uri: pageImageUrl(docId, page) }}
+        source={pageImageUrl(docId, page)}
         style={styles.pageImg}
-        resizeMode="stretch"
+        contentFit="fill"
+        transition={150}
+        cachePolicy="memory-disk"
       />
       {pathD ? (
         <Svg
@@ -414,8 +419,10 @@ function Player({ coverId, chapter, page, totalPages, elapsed, total, pct, isPla
             </View>
           ) : (
             <Image
-              source={{ uri: coverUrl(coverId) }}
+              source={coverUrl(coverId)}
               style={styles.cover}
+              contentFit="cover"
+              transition={200}
               onError={() => setCoverFailed(true)}
             />
           )}
@@ -438,8 +445,10 @@ function Player({ coverId, chapter, page, totalPages, elapsed, total, pct, isPla
           >
             {isLoading ? (
               <ActivityIndicator color={colors.ink} size="small" />
+            ) : isPlaying ? (
+              <PauseIcon />
             ) : (
-              <Text style={styles.playGlyph}>{isPlaying ? '⏸' : '▶'}</Text>
+              <PlayIcon />
             )}
           </Pressable>
 
@@ -464,6 +473,23 @@ function Player({ coverId, chapter, page, totalPages, elapsed, total, pct, isPla
           })}
         </View>
     </BlurView>
+  );
+}
+
+function PlayIcon() {
+  return (
+    <Svg width={20} height={20} viewBox="0 0 24 24" fill={colors.ink}>
+      <Path d="M8 5 L20 12 L8 19 Z" />
+    </Svg>
+  );
+}
+
+function PauseIcon() {
+  return (
+    <Svg width={20} height={20} viewBox="0 0 24 24" fill={colors.ink}>
+      <Path d="M6 5 H10 V19 H6 Z" />
+      <Path d="M14 5 H18 V19 H14 Z" />
+    </Svg>
   );
 }
 

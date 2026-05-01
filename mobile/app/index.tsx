@@ -1,4 +1,5 @@
-import { View, Text, FlatList, Image, Pressable, RefreshControl, ActivityIndicator, StyleSheet } from 'react-native';
+import { View, Text, FlatList, Pressable, RefreshControl, ActivityIndicator, StyleSheet } from 'react-native';
+import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { router } from 'expo-router';
@@ -94,18 +95,19 @@ export default function Library() {
 
 function BookCard({ item, onPress }: { item: { id: string; title: string; total_pages: number; has_cover?: boolean }; onPress: () => void }) {
   const [coverFailed, setCoverFailed] = useState(false);
-  const showCover = item.has_cover && !coverFailed;
   return (
     <Pressable
       onPress={onPress}
       style={({ pressed }) => [styles.card, { opacity: pressed ? 0.7 : 1 }]}
     >
       <View style={styles.coverWrap}>
-        {showCover ? (
+        {/* Sempre tenta carregar — fallback aparece SE imagem falhar (404, etc) */}
+        {!coverFailed ? (
           <Image
-            source={{ uri: coverUrl(item.id) }}
+            source={coverUrl(item.id)}
             style={styles.coverImg}
-            resizeMode="cover"
+            contentFit="cover"
+            transition={200}
             onError={() => setCoverFailed(true)}
           />
         ) : (

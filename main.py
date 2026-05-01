@@ -425,7 +425,16 @@ async def get_document_detail(doc_id: str):
 
     return {
         "document": doc,
-        "chunks": [{"index": c["chunk_index"], "page": c["page_number"], "text": c["text_content"][:200] + "...", "has_audio": bool(c["audio_path"])} for c in chunks],
+        "chunks": [
+            {
+                "index": c["chunk_index"],
+                "page": c["page_number"],
+                "text": c["text_content"][:200] + "...",
+                "has_audio": bool(c["audio_path"]),
+                "duration_ms": c.get("duration_ms") or 0,
+            }
+            for c in chunks
+        ],
         "progress": progress,
         "audio_ready": ready,
         "audio_total": len(chunks),

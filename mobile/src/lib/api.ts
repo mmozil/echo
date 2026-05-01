@@ -67,6 +67,7 @@ export type Chunk = {
   page: number;
   text: string;
   has_audio: boolean;
+  duration_ms?: number;
 };
 
 export type DocDetail = {

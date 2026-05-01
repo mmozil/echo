@@ -61,14 +61,35 @@ export function sentenceRange(words: Word[], idx: number): [number, number] {
 }
 
 // Acha palavra mais próxima das coords relativas (0-1)
+// Estratégia "linha-primeiro": filtra palavras onde Y bate com o toque, depois
+// pega a mais próxima em X. Bem mais preciso que distância 2D ponderada.
 export function findNearestWord(words: Word[], relX: number, relY: number): number {
+  if (!words.length) return 0;
+  // Tolerância vertical pra clicks ligeiramente acima/abaixo (1% da altura)
+  const Y_PAD = 0.012;
+  const onLine: number[] = [];
+  for (let i = 0; i < words.length; i++) {
+    const w = words[i];
+    if (relY >= w.y0 - Y_PAD && relY <= w.y1 + Y_PAD) onLine.push(i);
+  }
+  if (onLine.length) {
+    // Entre palavras da mesma linha, a mais próxima em X
+    let best = onLine[0], bestDx = Infinity;
+    for (const i of onLine) {
+      const w = words[i];
+      const wxm = (w.x0 + w.x1) / 2;
+      const dx = Math.abs(wxm - relX);
+      if (dx < bestDx) { bestDx = dx; best = i; }
+    }
+    return best;
+  }
+  // Fallback: distância 2D pura (sem peso) quando o clique cai entre linhas
   let best = 0, bestDist = Infinity;
   for (let i = 0; i < words.length; i++) {
     const w = words[i];
     const wxm = (w.x0 + w.x1) / 2;
     const wym = (w.y0 + w.y1) / 2;
-    const dx = wxm - relX;
-    const dy = (wym - relY) * 2; // pesa Y mais
+    const dx = wxm - relX, dy = wym - relY;
     const d = dx * dx + dy * dy;
     if (d < bestDist) { bestDist = d; best = i; }
   }
