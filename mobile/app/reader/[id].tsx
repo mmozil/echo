@@ -1,21 +1,30 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
-import { View, Text, Pressable, ActivityIndicator, Image, FlatList, Dimensions, Alert } from 'react-native';
+import { useEffect, useRef, useState, useCallback, memo } from 'react';
+import {
+  View, Text, Pressable, ActivityIndicator, Image, FlatList,
+  Dimensions, Alert, StyleSheet,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, router } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
-import { Audio } from 'expo-av';
+import { Audio, AVPlaybackStatus } from 'expo-av';
 import Svg, { Path } from 'react-native-svg';
 import {
   getDocument, getChunkAudio, getPageWords, saveProgress,
-  audioUrl, pageImageUrl, coverUrl,
+  audioUrl, pageImageUrl, coverUrl, type Chunk,
 } from '@/lib/api';
 import {
-  buildSentenceD, findNearestWord, sentenceRange, findBoundaryByWordSequence, type Word,
+  buildSentenceD, findNearestWord, sentenceRange,
+  findBoundaryByWordSequence, type Word,
 } from '@/lib/highlight';
 
 const SCREEN_W = Dimensions.get('window').width;
+const PAGE_RATIO = 0.71; // PDF ratio típico (A4-ish)
+const PAGE_HEIGHT = SCREEN_W / PAGE_RATIO;
 
 type Boundary = { offset_ms: number; duration_ms: number; text: string };
+
+const norm = (s: string) =>
+  (s || '').toLowerCase().replace(/[.,;:!?"'()\[\]\-—–“”‘’]/g, '').replace(/\s+/g, ' ').trim();
 
 export default function Reader() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -31,25 +40,26 @@ export default function Reader() {
   const [pageWords, setPageWords] = useState<Record<number, Word[]>>({});
   const [activeBIdx, setActiveBIdx] = useState(-1);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [isLoadingAudio, setIsLoadingAudio] = useState(false);
   const [posMs, setPosMs] = useState(0);
-  const [durMs, setDurMs] = useState(0);
   const [speed, setSpeed] = useState(1);
 
   const soundRef = useRef<Audio.Sound | null>(null);
-  const flatRef = useRef<FlatList>(null);
-  // Cache de duração por chunk pra calcular tempo global
+  const flatRef = useRef<FlatList<number>>(null);
   const chunkDur = useRef<Record<number, number>>({});
+  const userScrollingRef = useRef(false);
+  const userScrollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Configura áudio em background (iOS/Android)
+  // Áudio em background
   useEffect(() => {
     Audio.setAudioModeAsync({
       staysActiveInBackground: true,
       playsInSilentModeIOS: true,
       shouldDuckAndroid: true,
-      interruptionModeIOS: 1, // DoNotMix
+      interruptionModeIOS: 1,
       interruptionModeAndroid: 1,
-    });
-    return () => { soundRef.current?.unloadAsync(); };
+    }).catch(() => {});
+    return () => { soundRef.current?.unloadAsync().catch(() => {}); };
   }, []);
 
   // Restaura progresso ao abrir
@@ -59,12 +69,13 @@ export default function Reader() {
     }
   }, [data?.document?.id]);
 
-  // Carrega palavras das próximas páginas (pra highlight ficar pronto)
+  // Pré-carrega palavras das páginas próximas
   useEffect(() => {
     if (!data) return;
     const chunk = data.chunks[chunkIdx];
     if (!chunk) return;
-    const pages = [chunk.page, chunk.page + 1, chunk.page + 2].filter(p => p >= 1 && p <= data.document.total_pages);
+    const pages = [chunk.page, chunk.page + 1, chunk.page + 2]
+      .filter(p => p >= 1 && p <= data.document.total_pages);
     pages.forEach(async (p) => {
       if (pageWords[p]) return;
       try {
@@ -74,13 +85,25 @@ export default function Reader() {
     });
   }, [chunkIdx, data?.document?.id]);
 
-  // Toca chunk atual
+  // Auto-scroll para a página do chunk atual (a menos que user esteja rolando)
+  useEffect(() => {
+    if (!data || userScrollingRef.current) return;
+    const chunk = data.chunks[chunkIdx];
+    if (!chunk) return;
+    flatRef.current?.scrollToIndex({
+      index: chunk.page - 1,
+      animated: true,
+      viewPosition: 0.1, // página atual fica 10% do topo
+    });
+  }, [chunkIdx, data?.document?.id]);
+
+  // Toca chunk
   const playChunk = useCallback(async (idx: number, seekToMs = 0) => {
     if (!data) return;
+    setIsLoadingAudio(true);
     try {
-      // Descarregar anterior
       if (soundRef.current) {
-        await soundRef.current.unloadAsync();
+        await soundRef.current.unloadAsync().catch(() => {});
         soundRef.current = null;
       }
 
@@ -90,11 +113,10 @@ export default function Reader() {
       const { sound } = await Audio.Sound.createAsync(
         { uri: audioUrl(audio.audio_url) },
         { shouldPlay: true, rate: speed, positionMillis: seekToMs },
-        (status) => {
+        (status: AVPlaybackStatus) => {
           if (!status.isLoaded) return;
           setPosMs(status.positionMillis || 0);
           if (status.durationMillis) {
-            setDurMs(status.durationMillis);
             chunkDur.current[idx] = status.durationMillis;
           }
           setIsPlaying(status.isPlaying);
@@ -102,7 +124,7 @@ export default function Reader() {
             const nextIdx = idx + 1;
             if (nextIdx < data.chunks.length) {
               setChunkIdx(nextIdx);
-              playChunk(nextIdx);
+              playChunk(nextIdx, 0);
             } else {
               setIsPlaying(false);
             }
@@ -110,32 +132,39 @@ export default function Reader() {
         }
       );
       soundRef.current = sound;
-
-      // Salvar progresso (sync com web)
+      setChunkIdx(idx);
       saveProgress(docId, idx, seekToMs).catch(() => {});
-
-      // Scroll para a página do chunk
-      const chunk = data.chunks[idx];
-      if (chunk) flatRef.current?.scrollToIndex({ index: chunk.page - 1, animated: true });
     } catch (e: any) {
       Alert.alert('Erro', e?.message || 'Falha ao carregar áudio');
+    } finally {
+      setIsLoadingAudio(false);
     }
   }, [data, docId, speed]);
 
-  // Toggle play/pause
   const togglePlay = useCallback(async () => {
-    if (soundRef.current) {
-      const status = await soundRef.current.getStatusAsync();
-      if (status.isLoaded) {
-        if (status.isPlaying) await soundRef.current.pauseAsync();
-        else await soundRef.current.playAsync();
-        return;
-      }
+    if (!soundRef.current) {
+      await playChunk(chunkIdx, 0);
+      return;
     }
-    playChunk(chunkIdx);
+    const status = await soundRef.current.getStatusAsync();
+    if (!status.isLoaded) {
+      await playChunk(chunkIdx, 0);
+      return;
+    }
+    if (status.isPlaying) await soundRef.current.pauseAsync();
+    else await soundRef.current.playAsync();
   }, [chunkIdx, playChunk]);
 
-  // Atualizar boundary ativo (highlight) baseado em posMs
+  const skip10 = useCallback((dir: 1 | -1) => {
+    if (!soundRef.current) return;
+    soundRef.current.getStatusAsync().then(s => {
+      if (!s.isLoaded) return;
+      const newPos = Math.max(0, Math.min((s.positionMillis || 0) + dir * 10000, s.durationMillis || 0));
+      soundRef.current?.setPositionAsync(newPos);
+    });
+  }, []);
+
+  // Atualizar boundary ativo
   useEffect(() => {
     if (!boundaries.length) { setActiveBIdx(-1); return; }
     let idx = -1;
@@ -146,45 +175,50 @@ export default function Reader() {
     setActiveBIdx(idx);
   }, [posMs, boundaries]);
 
-  // Click numa página: pega coords → pageWord → frase → seek
+  // Click numa página → walkback frase → seek exato (igual desktop)
   const handlePagePress = useCallback(async (page: number, relX: number, relY: number) => {
-    let words = pageWords[page];
-    if (!words) {
-      words = await getPageWords(docId, page);
-      setPageWords(prev => ({ ...prev, [page]: words }));
-    }
-    if (!words.length) return;
-    const wordIdx = findNearestWord(words, relX, relY);
-    const [start] = sentenceRange(words, wordIdx);
-    const contextWords = words.slice(start, start + 12).map(w => w.word);
-
-    // Achar chunk que contém o contexto (heurística simples: chunk com mesma page)
-    const ctx = contextWords.join(' ').toLowerCase();
-    let chunkMatchIdx = -1;
-    if (data) {
-      const candidates = data.chunks.filter(c => c.page === page);
-      for (const c of candidates) {
-        if (c.text.toLowerCase().includes(contextWords.slice(0, 3).join(' ').toLowerCase())) {
-          chunkMatchIdx = c.index;
-          break;
-        }
+    if (!data) return;
+    setIsLoadingAudio(true);
+    try {
+      let words = pageWords[page];
+      if (!words) {
+        words = await getPageWords(docId, page);
+        setPageWords(prev => ({ ...prev, [page]: words }));
       }
-      if (chunkMatchIdx === -1 && candidates.length) chunkMatchIdx = candidates[0].index;
-    }
-    if (chunkMatchIdx === -1) return;
+      if (!words.length) return;
 
-    setChunkIdx(chunkMatchIdx);
-    // Buscar áudio + boundaries → seek
-    const audio = await getChunkAudio(docId, chunkMatchIdx);
-    setBoundaries(audio.boundaries);
-    const bIdx = findBoundaryByWordSequence(contextWords, audio.boundaries);
-    const seekMs = bIdx >= 0 ? audio.boundaries[bIdx].offset_ms : 0;
-    playChunk(chunkMatchIdx, seekMs);
+      const wordIdx = findNearestWord(words, relX, relY);
+      const [start] = sentenceRange(words, wordIdx);
+      const contextWords = words.slice(start, start + 12).map(w => w.word);
+
+      // Achar chunk que contém o contexto, varrendo entre chunks da página +/- 1
+      const ctx2Norm = norm(contextWords.slice(0, 3).join(' '));
+      let chunkMatchIdx = -1;
+      const candidates = data.chunks.filter(c => Math.abs(c.page - page) <= 1);
+      for (const c of candidates) {
+        if (norm(c.text).includes(ctx2Norm)) { chunkMatchIdx = c.index; break; }
+      }
+      if (chunkMatchIdx === -1) {
+        const sameP = data.chunks.find(c => c.page === page);
+        chunkMatchIdx = sameP?.index ?? 0;
+      }
+
+      // Carregar áudio + match exato no boundaries
+      const audio = await getChunkAudio(docId, chunkMatchIdx);
+      setBoundaries(audio.boundaries);
+      const bIdx = findBoundaryByWordSequence(contextWords, audio.boundaries);
+      const seekMs = bIdx >= 0 ? audio.boundaries[bIdx].offset_ms : 0;
+      await playChunk(chunkMatchIdx, seekMs);
+    } catch (e: any) {
+      console.warn('handlePagePress:', e);
+    } finally {
+      setIsLoadingAudio(false);
+    }
   }, [data, docId, pageWords, playChunk]);
 
   if (isLoading || !data) {
     return (
-      <View style={{ flex: 1, backgroundColor: '#0F0F12', alignItems: 'center', justifyContent: 'center' }}>
+      <View style={[styles.fill, styles.center]}>
         <ActivityIndicator color="#ABB3FE" />
       </View>
     );
@@ -193,7 +227,7 @@ export default function Reader() {
   const doc = data.document;
   const chunk = data.chunks[chunkIdx];
 
-  // Cálculo de tempo global
+  // Tempo global (estilo Speechify): elapsed/total dividido pela velocidade
   const AVG = 50000;
   let elapsed = 0;
   for (let i = 0; i < chunkIdx; i++) elapsed += chunkDur.current[i] || AVG;
@@ -203,27 +237,33 @@ export default function Reader() {
   const pct = total > 0 ? (elapsed / total) * 100 : 0;
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#0F0F12' }} edges={['top', 'left', 'right']}>
+    <SafeAreaView style={styles.fill} edges={['top', 'left', 'right']}>
       {/* Header */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 8 }}>
-        <Pressable onPress={() => router.back()} hitSlop={10} style={{ padding: 8 }}>
-          <Text style={{ color: 'white', fontSize: 16 }}>‹</Text>
+      <View style={styles.header}>
+        <Pressable onPress={() => router.back()} hitSlop={10} style={styles.backBtn}>
+          <Text style={styles.backChevron}>‹</Text>
         </Pressable>
-        <Text numberOfLines={1} style={{ flex: 1, color: 'white', fontSize: 14, fontWeight: '600', textAlign: 'center', marginHorizontal: 12 }}>
-          {doc.title}
-        </Text>
-        <Text style={{ color: 'rgba(255,255,255,0.4)', fontSize: 12, paddingHorizontal: 8 }}>
+        <Text numberOfLines={1} style={styles.headerTitle}>{doc.title}</Text>
+        <Text style={styles.headerPage}>
           {chunk?.page || '—'}/{doc.total_pages}
         </Text>
       </View>
 
-      {/* Páginas (PNG do servidor + SVG highlight) */}
+      {/* Lista vertical de páginas */}
       <FlatList
         ref={flatRef}
         data={Array.from({ length: doc.total_pages }, (_, i) => i + 1)}
         keyExtractor={(p) => String(p)}
         showsVerticalScrollIndicator={false}
-        getItemLayout={(_, i) => ({ length: SCREEN_W * 1.4, offset: SCREEN_W * 1.4 * i, index: i })}
+        getItemLayout={(_, i) => ({ length: PAGE_HEIGHT + 8, offset: (PAGE_HEIGHT + 8) * i, index: i })}
+        onScrollBeginDrag={() => {
+          userScrollingRef.current = true;
+          if (userScrollTimer.current) clearTimeout(userScrollTimer.current);
+        }}
+        onMomentumScrollEnd={() => {
+          if (userScrollTimer.current) clearTimeout(userScrollTimer.current);
+          userScrollTimer.current = setTimeout(() => { userScrollingRef.current = false; }, 5000);
+        }}
         renderItem={({ item: page }) => (
           <PdfPage
             docId={docId}
@@ -247,20 +287,13 @@ export default function Reader() {
         total={total / speed}
         pct={pct}
         isPlaying={isPlaying}
+        isLoading={isLoadingAudio}
         onPlayPause={togglePlay}
-        onSkip10={(dir) => {
-          if (soundRef.current) {
-            soundRef.current.getStatusAsync().then(s => {
-              if (!s.isLoaded) return;
-              const newPos = Math.max(0, Math.min((s.positionMillis || 0) + dir * 10000, s.durationMillis || 0));
-              soundRef.current?.setPositionAsync(newPos);
-            });
-          }
-        }}
+        onSkip10={skip10}
         speed={speed}
         onSpeedChange={(s) => {
           setSpeed(s);
-          soundRef.current?.setRateAsync(s, true);
+          soundRef.current?.setRateAsync(s, true).catch(() => {});
         }}
       />
     </SafeAreaView>
@@ -268,17 +301,13 @@ export default function Reader() {
 }
 
 // ===== Página PDF + SVG highlight =====
-function PdfPage({ docId, page, words, isActive, boundaries, activeBIdx, onPress }: {
+const PdfPage = memo(function PdfPage({ docId, page, words, isActive, boundaries, activeBIdx, onPress }: {
   docId: string; page: number; words?: Word[]; isActive: boolean;
   boundaries: Boundary[]; activeBIdx: number;
   onPress: (relX: number, relY: number) => void;
 }) {
-  const [layout, setLayout] = useState({ width: 0, height: 0 });
-
-  // Calcular path da frase ativa
   let pathD = '';
-  if (isActive && words && words.length && activeBIdx >= 0 && boundaries.length) {
-    // Mapear boundary ativo → palavra na página por ratio (igual web)
+  if (isActive && words?.length && activeBIdx >= 0 && boundaries.length) {
     const ratio = activeBIdx / boundaries.length;
     const targetIdx = Math.min(Math.floor(ratio * words.length), words.length - 1);
     const [s, e] = sentenceRange(words, targetIdx);
@@ -288,115 +317,116 @@ function PdfPage({ docId, page, words, isActive, boundaries, activeBIdx, onPress
   return (
     <Pressable
       onPress={(e) => {
-        if (!layout.width) return;
-        const relX = e.nativeEvent.locationX / layout.width;
-        const relY = e.nativeEvent.locationY / layout.height;
+        const relX = e.nativeEvent.locationX / SCREEN_W;
+        const relY = e.nativeEvent.locationY / PAGE_HEIGHT;
         onPress(relX, relY);
       }}
-      onLayout={(e) => setLayout({ width: e.nativeEvent.layout.width, height: e.nativeEvent.layout.height })}
-      style={{ marginVertical: 4 }}
+      style={styles.pageWrap}
     >
-      <View style={{ position: 'relative' }}>
-        <Image
-          source={{ uri: pageImageUrl(docId, page) }}
-          style={{ width: SCREEN_W, aspectRatio: 0.71, backgroundColor: 'white' }}
-          resizeMode="contain"
-        />
-        {pathD ? (
-          <Svg
-            width={layout.width || SCREEN_W}
-            height={layout.height || SCREEN_W * 1.4}
-            viewBox="0 0 1000 1000"
-            preserveAspectRatio="none"
-            style={{ position: 'absolute', left: 0, top: 0 }}
-            pointerEvents="none"
-          >
-            <Path d={pathD} fill="rgba(165, 175, 250, 0.42)" />
-          </Svg>
-        ) : null}
-      </View>
+      <Image
+        source={{ uri: pageImageUrl(docId, page) }}
+        style={styles.pageImg}
+        resizeMode="contain"
+      />
+      {pathD ? (
+        <Svg
+          width={SCREEN_W} height={PAGE_HEIGHT}
+          viewBox="0 0 1000 1000"
+          preserveAspectRatio="none"
+          style={StyleSheet.absoluteFill}
+          pointerEvents="none"
+        >
+          <Path d={pathD} fill="rgba(165, 175, 250, 0.42)" />
+        </Svg>
+      ) : null}
     </Pressable>
   );
-}
+});
 
-// ===== Player (Apple Books style) =====
-function Player({ coverId, chapter, page, totalPages, elapsed, total, pct, isPlaying, onPlayPause, onSkip10, speed, onSpeedChange }: {
+// ===== Player Apple Books style =====
+function Player({ coverId, chapter, page, totalPages, elapsed, total, pct, isPlaying, isLoading, onPlayPause, onSkip10, speed, onSpeedChange }: {
   coverId: string; chapter: string; page: number; totalPages: number;
-  elapsed: number; total: number; pct: number; isPlaying: boolean;
+  elapsed: number; total: number; pct: number;
+  isPlaying: boolean; isLoading: boolean;
   onPlayPause: () => void; onSkip10: (dir: 1 | -1) => void;
   speed: number; onSpeedChange: (s: number) => void;
 }) {
   return (
-    <View style={{ paddingHorizontal: 12, paddingBottom: 12 }}>
-      <View style={{
-        backgroundColor: 'rgba(20, 20, 22, 0.95)',
-        borderRadius: 18,
-        borderWidth: 0.5,
-        borderColor: 'rgba(255,255,255,0.1)',
-        overflow: 'hidden',
-      }}>
+    <View style={styles.playerWrap}>
+      <View style={styles.playerPill}>
         {/* Progress bar */}
-        <View style={{ height: 3, backgroundColor: 'rgba(255,255,255,0.1)' }}>
-          <View style={{ width: `${pct}%`, height: '100%', backgroundColor: '#8C9CFF' }} />
+        <View style={styles.progressBar}>
+          <View style={[styles.progressFill, { width: `${pct}%` }]} />
         </View>
 
         {/* Main row */}
-        <View style={{ flexDirection: 'row', alignItems: 'center', padding: 12, gap: 12 }}>
-          <Image
-            source={{ uri: coverUrl(coverId) }}
-            style={{ width: 48, height: 48, borderRadius: 9, backgroundColor: 'rgba(255,255,255,0.05)' }}
-          />
-          <View style={{ flex: 1, minWidth: 0 }}>
-            <Text numberOfLines={1} style={{ color: 'white', fontSize: 13, fontWeight: '700' }}>
-              {chapter}
-            </Text>
-            <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 11, marginTop: 2 }}>
+        <View style={styles.mainRow}>
+          <Image source={{ uri: coverUrl(coverId) }} style={styles.cover} />
+          <View style={styles.infoCol}>
+            <Text numberOfLines={1} style={styles.chapterText}>{chapter}</Text>
+            <Text numberOfLines={1} style={styles.metaText}>
               {fmt(elapsed)} · pág {page}/{totalPages} · {fmt(total)}
             </Text>
           </View>
-          <Pressable onPress={() => onSkip10(-1)} hitSlop={6} style={{ padding: 6 }}>
-            <Text style={{ color: 'white', fontSize: 11, fontWeight: '700' }}>−10</Text>
+
+          <Pressable onPress={() => onSkip10(-1)} hitSlop={6} style={styles.skipBtn}>
+            <SkipIcon dir="back" />
+            <Text style={styles.skipNum}>10</Text>
           </Pressable>
+
           <Pressable
             onPress={onPlayPause}
-            style={({ pressed }) => ({
-              width: 44, height: 44, borderRadius: 22,
-              backgroundColor: 'white',
-              alignItems: 'center', justifyContent: 'center',
-              opacity: pressed ? 0.85 : 1,
-            })}
+            disabled={isLoading}
+            style={({ pressed }) => [styles.playBtn, { opacity: pressed || isLoading ? 0.85 : 1 }]}
           >
-            <Text style={{ color: '#0F0F12', fontSize: 16, fontWeight: '900' }}>
-              {isPlaying ? '⏸' : '▶'}
-            </Text>
+            {isLoading ? (
+              <ActivityIndicator color="#0F0F12" size="small" />
+            ) : (
+              <Text style={styles.playGlyph}>{isPlaying ? '⏸' : '▶'}</Text>
+            )}
           </Pressable>
-          <Pressable onPress={() => onSkip10(1)} hitSlop={6} style={{ padding: 6 }}>
-            <Text style={{ color: 'white', fontSize: 11, fontWeight: '700' }}>+10</Text>
+
+          <Pressable onPress={() => onSkip10(1)} hitSlop={6} style={styles.skipBtn}>
+            <SkipIcon dir="fwd" />
+            <Text style={styles.skipNum}>10</Text>
           </Pressable>
         </View>
 
-        {/* Speed selector */}
-        <View style={{ flexDirection: 'row', justifyContent: 'flex-end', paddingHorizontal: 12, paddingBottom: 10, gap: 6 }}>
-          {[0.75, 1, 1.25, 1.5, 2].map(s => (
-            <Pressable
-              key={s}
-              onPress={() => onSpeedChange(s)}
-              style={{
-                paddingHorizontal: 9, paddingVertical: 4,
-                borderRadius: 12,
-                backgroundColor: speed === s ? 'rgba(171,179,254,0.25)' : 'rgba(255,255,255,0.05)',
-                borderWidth: 0.5,
-                borderColor: speed === s ? 'rgba(171,179,254,0.4)' : 'rgba(255,255,255,0.1)',
-              }}
-            >
-              <Text style={{ color: speed === s ? '#ABB3FE' : 'rgba(255,255,255,0.7)', fontSize: 11, fontWeight: '700' }}>
-                {s}×
-              </Text>
-            </Pressable>
-          ))}
+        {/* Speed */}
+        <View style={styles.speedRow}>
+          {[0.75, 1, 1.25, 1.5, 2].map(s => {
+            const active = speed === s;
+            return (
+              <Pressable
+                key={s}
+                onPress={() => onSpeedChange(s)}
+                style={[styles.speedPill, active && styles.speedPillActive]}
+              >
+                <Text style={[styles.speedText, active && styles.speedTextActive]}>{s}×</Text>
+              </Pressable>
+            );
+          })}
         </View>
       </View>
     </View>
+  );
+}
+
+function SkipIcon({ dir }: { dir: 'back' | 'fwd' }) {
+  return (
+    <Svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={2}>
+      {dir === 'back' ? (
+        <>
+          <Path d="M1 4v6h6" />
+          <Path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
+        </>
+      ) : (
+        <>
+          <Path d="M23 4v6h-6" />
+          <Path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+        </>
+      )}
+    </Svg>
   );
 }
 
@@ -406,5 +436,90 @@ function fmt(ms: number): string {
   const h = Math.floor(s / 3600);
   const m = Math.floor((s % 3600) / 60);
   const sec = (s % 60).toString().padStart(2, '0');
-  return h > 0 ? `${h}:${m.toString().padStart(2,'0')}:${sec}` : `${m}:${sec}`;
+  return h > 0 ? `${h}:${m.toString().padStart(2, '0')}:${sec}` : `${m}:${sec}`;
 }
+
+const styles = StyleSheet.create({
+  fill: { flex: 1, backgroundColor: '#0F0F12' },
+  center: { alignItems: 'center', justifyContent: 'center' },
+
+  header: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 12, paddingVertical: 8,
+  },
+  backBtn: { padding: 8 },
+  backChevron: { color: 'white', fontSize: 22, lineHeight: 22 },
+  headerTitle: {
+    flex: 1, color: 'white',
+    fontSize: 14, fontWeight: '600',
+    textAlign: 'center', marginHorizontal: 12,
+  },
+  headerPage: {
+    color: 'rgba(255,255,255,0.4)',
+    fontSize: 12, paddingHorizontal: 8,
+  },
+
+  pageWrap: { marginVertical: 4 },
+  pageImg: { width: SCREEN_W, height: PAGE_HEIGHT, backgroundColor: 'white' },
+
+  playerWrap: { paddingHorizontal: 10, paddingBottom: 10 },
+  playerPill: {
+    backgroundColor: 'rgba(20, 20, 22, 0.96)',
+    borderRadius: 18,
+    borderWidth: 0.5,
+    borderColor: 'rgba(255,255,255,0.1)',
+    overflow: 'hidden',
+  },
+  progressBar: { height: 3, backgroundColor: 'rgba(255,255,255,0.12)' },
+  progressFill: { height: '100%', backgroundColor: '#8C9CFF' },
+
+  mainRow: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingVertical: 11, paddingHorizontal: 12, gap: 10,
+  },
+  cover: {
+    width: 46, height: 46, borderRadius: 9,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+  },
+  infoCol: { flex: 1, minWidth: 0, gap: 3 },
+  chapterText: { color: 'white', fontSize: 13, fontWeight: '700', letterSpacing: -0.1 },
+  metaText: { color: 'rgba(255,255,255,0.55)', fontSize: 11 },
+
+  skipBtn: {
+    width: 38, height: 38, borderRadius: 19,
+    alignItems: 'center', justifyContent: 'center',
+    position: 'relative',
+  },
+  skipNum: {
+    position: 'absolute',
+    color: 'white',
+    fontSize: 7.5, fontWeight: '700',
+    letterSpacing: -0.4,
+  },
+
+  playBtn: {
+    width: 44, height: 44, borderRadius: 22,
+    backgroundColor: 'white',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  playGlyph: { color: '#0F0F12', fontSize: 16, fontWeight: '900' },
+
+  speedRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    paddingHorizontal: 12, paddingBottom: 11,
+    gap: 6,
+  },
+  speedPill: {
+    paddingHorizontal: 9, paddingVertical: 4,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderWidth: 0.5, borderColor: 'rgba(255,255,255,0.1)',
+  },
+  speedPillActive: {
+    backgroundColor: 'rgba(171,179,254,0.25)',
+    borderColor: 'rgba(171,179,254,0.4)',
+  },
+  speedText: { color: 'rgba(255,255,255,0.7)', fontSize: 11, fontWeight: '700' },
+  speedTextActive: { color: '#ABB3FE' },
+});
