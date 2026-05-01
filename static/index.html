@@ -1568,9 +1568,8 @@ function highlightWordOnPdf(boundaryIdx, pageNum) {
     const sentenceLines = _groupLines(words, sentStart, sentEnd);
     sentencePath.setAttribute('d', _buildD(sentenceLines, 0.003, 0.002, 8));
 
-    // Path da PALAVRA ATUAL: 1 retângulo arredondado por cima
-    const cw = words[bestIdx];
-    wordPath.setAttribute('d', _buildD([cw], 0.002, 0.0015, 6));
+    // Palavra atual desligada — boundary do TTS desincroniza visualmente
+    wordPath.setAttribute('d', '');
 }
 
 let lastPdfHighlightIdx = -1;
