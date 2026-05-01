@@ -99,13 +99,13 @@ export function findNearestWord(words: Word[], relX: number, relY: number): numb
 // Match por sequência no .text dos boundaries do TTS (mesma lógica do web)
 const clean = (s: string) => (s || '').toLowerCase().replace(/[.,;:!?"'()\[\]\-]/g, '').trim();
 
-export function findBoundaryByWordSequence(
+export function findBoundaryByWordSequenceScored(
   contextWords: string[],
   boundaries: Array<{ text: string }>
-): number {
-  if (!boundaries.length) return -1;
+): { idx: number; score: number } {
+  if (!boundaries.length) return { idx: -1, score: 0 };
   const context = contextWords.map(clean).filter(Boolean).slice(0, 10);
-  if (!context.length) return -1;
+  if (!context.length) return { idx: -1, score: 0 };
   let bestScore = 0, bestIdx = -1;
   for (let bi = 0; bi < boundaries.length; bi++) {
     let score = 0, off = 0;
@@ -123,5 +123,13 @@ export function findBoundaryByWordSequence(
     }
     if (score > bestScore) { bestScore = score; bestIdx = bi; }
   }
-  return bestIdx;
+  return { idx: bestIdx, score: bestScore };
+}
+
+// Compat: retorna só o índice (mantém API antiga)
+export function findBoundaryByWordSequence(
+  contextWords: string[],
+  boundaries: Array<{ text: string }>
+): number {
+  return findBoundaryByWordSequenceScored(contextWords, boundaries).idx;
 }

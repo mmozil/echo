@@ -16,7 +16,7 @@ import {
 } from '@/lib/api';
 import {
   buildSentenceD, findNearestWord, sentenceRange,
-  findBoundaryByWordSequence, type Word,
+  findBoundaryByWordSequence, findBoundaryByWordSequenceScored, type Word,
 } from '@/lib/highlight';
 import { colors, fonts } from '@/lib/theme';
 
@@ -201,22 +201,37 @@ export default function Reader() {
       const [start] = sentenceRange(words, wordIdx);
       const contextWords = words.slice(start, start + 12).map(w => w.word);
 
-      const ctx3Norm = norm(contextWords.slice(0, 3).join(' '));
-      let chunkMatchIdx = -1;
+      // Candidatos: chunks da página atual ± 1 (cobre quebras de página)
       const candidates = data.chunks.filter(c => Math.abs(c.page - page) <= 1);
-      for (const c of candidates) {
-        if (norm(c.text).includes(ctx3Norm)) { chunkMatchIdx = c.index; break; }
-      }
-      if (chunkMatchIdx === -1) {
-        const sameP = data.chunks.find(c => c.page === page);
-        chunkMatchIdx = sameP?.index ?? 0;
+      if (!candidates.length) return;
+
+      // Buscar boundaries de TODOS em paralelo e escolher o melhor score
+      const audios = await Promise.all(
+        candidates.map(c => getChunkAudio(docId, c.index).catch(() => null))
+      );
+      let bestIdx = -1, bestScore = 0, bestBoundary = -1, bestAudio: any = null;
+      for (let k = 0; k < candidates.length; k++) {
+        const a = audios[k];
+        if (!a?.boundaries?.length) continue;
+        const { idx, score } = findBoundaryByWordSequenceScored(contextWords, a.boundaries);
+        if (score > bestScore) {
+          bestScore = score;
+          bestIdx = candidates[k].index;
+          bestBoundary = idx;
+          bestAudio = a;
+        }
       }
 
-      const audio = await getChunkAudio(docId, chunkMatchIdx);
-      setBoundaries(audio.boundaries);
-      const bIdx = findBoundaryByWordSequence(contextWords, audio.boundaries);
-      const seekMs = bIdx >= 0 ? audio.boundaries[bIdx].offset_ms : 0;
-      await playChunk(chunkMatchIdx, seekMs);
+      // Sem nenhum match — fallback: chunk com page exata, seek 0
+      if (bestIdx === -1) {
+        const sameP = data.chunks.find(c => c.page === page);
+        bestIdx = sameP?.index ?? 0;
+      }
+
+      if (bestAudio) setBoundaries(bestAudio.boundaries);
+      const seekMs = bestBoundary >= 0 && bestAudio ? bestAudio.boundaries[bestBoundary].offset_ms : 0;
+      console.log('[click]', { chunkIdx: bestIdx, score: bestScore, seekMs });
+      await playChunk(bestIdx, seekMs);
     } catch (e: any) {
       console.warn('handlePagePress:', e);
       setIsLoadingAudio(false);
@@ -378,12 +393,33 @@ function TextView({ docId, chunks, chunkIdx, boundaries, activeBIdx, onPlayChunk
   onPlayChunk: (idx: number) => void;
   bottomPadding: number;
 }) {
+  const scrollRef = useRef<ScrollView>(null);
+  const offsetsRef = useRef<Record<number, number>>({});
+
+  // Quando chunkIdx muda OU quando a TextView é montada (mudança de view),
+  // rola pra posição do chunk ativo
+  useEffect(() => {
+    const y = offsetsRef.current[chunkIdx];
+    if (y != null) {
+      scrollRef.current?.scrollTo({ y: Math.max(0, y - 80), animated: true });
+    }
+  }, [chunkIdx]);
+
   return (
-    <ScrollView contentContainerStyle={[styles.textWrap, { paddingBottom: bottomPadding }]} showsVerticalScrollIndicator={false}>
+    <ScrollView
+      ref={scrollRef}
+      contentContainerStyle={[styles.textWrap, { paddingBottom: bottomPadding }]}
+      showsVerticalScrollIndicator={false}
+    >
       {chunks.map((c) => {
         const isActive = c.index === chunkIdx;
         return (
-          <Pressable key={c.index} onPress={() => onPlayChunk(c.index)} style={styles.textChunk}>
+          <Pressable
+            key={c.index}
+            onPress={() => onPlayChunk(c.index)}
+            onLayout={(e) => { offsetsRef.current[c.index] = e.nativeEvent.layout.y; }}
+            style={styles.textChunk}
+          >
             <Text style={[
               styles.textBody,
               isActive && styles.textBodyActive,
