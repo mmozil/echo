@@ -598,9 +598,32 @@ async function initApp() {
         return;
     }
     // 2. Auth OK — carregar dados
-    loadDocuments();
+    await loadDocuments();
     setupDragDrop();
+    // 3. Restaurar estado via URL hash (#doc/{id})
+    handleHashRoute();
 }
+
+function handleHashRoute() {
+    const m = (window.location.hash || '').match(/^#doc\/([a-f0-9-]+)/i);
+    if (m && m[1]) {
+        openDocument(m[1]).catch(e => {
+            console.warn('Falha abrindo documento do hash:', e);
+            window.location.hash = '';
+        });
+    }
+}
+window.addEventListener('hashchange', () => {
+    const reader = document.getElementById('reader');
+    const inReader = reader.classList.contains('active');
+    if (!window.location.hash && inReader) {
+        // Voltou para biblioteca via back/clear hash
+        closeReaderInternal();
+    } else if (window.location.hash.startsWith('#doc/')) {
+        const m = window.location.hash.match(/^#doc\/([a-f0-9-]+)/i);
+        if (m && (!currentDoc || currentDoc.id !== m[1])) handleHashRoute();
+    }
+});
 
 async function handleLogout() {
     await fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
@@ -691,6 +714,10 @@ async function deleteDoc(id, title) {
 
 // === READER ===
 async function openDocument(docId) {
+    // Atualizar hash para persistir o estado em F5/share
+    if (window.location.hash !== `#doc/${docId}`) {
+        history.replaceState(null, '', `#doc/${docId}`);
+    }
     showLoading('Abrindo documento...', 'Carregando páginas e texto');
     try {
         const r = await fetch(`/api/documents/${docId}`);
@@ -923,6 +950,11 @@ function goToPageInput(val) {
 window.goToPageInput = goToPageInput;
 
 function closeReader() {
+    history.replaceState(null, '', window.location.pathname);
+    closeReaderInternal();
+}
+
+function closeReaderInternal() {
     stopAudio();
     pdfDoc = null; renderedPages = {};
     document.getElementById('reader').classList.remove('active');
