@@ -170,40 +170,92 @@
         .text-view .word.active-sentence { background: var(--highlight); padding: 1px 2px; border-radius: 3px; }
         .text-view .word.spoken { color: var(--ink); }
 
-        /* === PLAYER BAR === */
-        .player-bar { flex-shrink: 0; padding: 0 20px 14px; pointer-events: none; transition: opacity 0.3s, transform 0.3s; }
+        /* === PLAYER BAR (estilo Apple Music / Spotify) === */
+        .player-bar { flex-shrink: 0; padding: 0 16px 16px; pointer-events: none; transition: opacity 0.3s, transform 0.3s; }
         .player-bar.auto-hidden { opacity: 0; transform: translateY(10px); pointer-events: none; }
         .player-bar:hover { opacity: 1 !important; transform: translateY(0) !important; }
-        .player-pill { pointer-events: all; background: #2C2C2E; color: white; border-radius: 16px; max-width: 440px; margin: 0 auto; box-shadow: 0 6px 28px rgba(0,0,0,0.25); overflow: hidden; }
+        .player-pill {
+            pointer-events: all;
+            background: rgba(28, 28, 30, 0.92);
+            backdrop-filter: blur(24px) saturate(180%);
+            -webkit-backdrop-filter: blur(24px) saturate(180%);
+            color: white;
+            border-radius: 18px;
+            max-width: 520px;
+            margin: 0 auto;
+            box-shadow: 0 12px 36px rgba(0,0,0,0.35), 0 1px 0 rgba(255,255,255,0.06) inset;
+            overflow: hidden;
+            border: 0.5px solid rgba(255,255,255,0.08);
+        }
+        [data-theme="light"] .player-pill { background: rgba(28, 28, 30, 0.94); }
 
-        .pp-progress { height: 2px; background: rgba(255,255,255,0.1); cursor: pointer; }
-        .pp-progress:hover { height: 3px; }
-        .pfill { height: 100%; background: white; transition: width 0.1s linear; }
+        .pp-progress { height: 3px; background: rgba(255,255,255,0.12); cursor: pointer; position: relative; }
+        .pp-progress:hover { height: 5px; }
+        .pp-progress:hover .pfill::after { transform: scale(1); opacity: 1; }
+        .pfill { height: 100%; background: linear-gradient(90deg, #fff, rgba(255,255,255,0.92)); transition: width 0.1s linear, height 0.15s; position: relative; }
+        .pfill::after { content: ''; position: absolute; right: -6px; top: 50%; width: 12px; height: 12px; background: #fff; border-radius: 50%; transform: translateY(-50%) scale(0); opacity: 0; transition: transform 0.15s, opacity 0.15s; box-shadow: 0 1px 4px rgba(0,0,0,0.3); }
 
-        .pp-row1 { display: flex; align-items: center; padding: 10px 16px 4px; gap: 10px; }
-        .pp-time { font-size: 12px; font-family: var(--font-m); font-variant-numeric: tabular-nums; color: rgba(255,255,255,0.62); white-space: nowrap; min-width: 48px; line-height: 1; letter-spacing: 0.2px; }
+        .pp-row1 { display: flex; align-items: center; padding: 12px 18px 6px; gap: 12px; }
+        .pp-time { font-size: 11px; font-family: var(--font-m); font-variant-numeric: tabular-nums; color: rgba(255,255,255,0.55); white-space: nowrap; min-width: 50px; line-height: 1; letter-spacing: 0.3px; }
         .pp-time.r { text-align: right; }
-        .pp-chapter { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px; font-size: 13px; font-weight: 500; color: rgba(255,255,255,0.92); cursor: pointer; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; line-height: 1; }
-        .pp-chapter:hover { color: white; }
-        .pp-chapter svg { width: 12px; height: 12px; flex-shrink: 0; opacity: 0.55; }
+        .pp-chapter { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px; font-size: 13px; font-weight: 600; color: rgba(255,255,255,0.95); cursor: pointer; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; line-height: 1.1; padding: 0 4px; letter-spacing: -0.1px; }
+        .pp-chapter:hover { color: white; opacity: 0.85; }
+        .pp-chapter svg { width: 11px; height: 11px; flex-shrink: 0; opacity: 0.5; }
         .pp-chapter-meta { font-size: 11px; font-weight: 400; color: rgba(255,255,255,0.5); margin-left: 6px; font-variant-numeric: tabular-nums; }
 
-        .pp-row2 { display: flex; align-items: center; justify-content: center; padding: 6px 16px 12px; gap: 16px; }
+        .pp-row2 { display: flex; align-items: center; justify-content: center; padding: 8px 16px 14px; gap: 18px; }
 
-        .pp-voice { width: 28px; height: 28px; border-radius: 50%; border: none; background: transparent; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 18px; padding: 0; }
-        .pp-voice:hover { background: rgba(255,255,255,0.1); }
+        .pp-voice {
+            width: 30px; height: 30px;
+            border-radius: 50%;
+            border: 0.5px solid rgba(255,255,255,0.12);
+            background: rgba(255,255,255,0.05);
+            cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 17px; padding: 0;
+            transition: all 0.15s;
+        }
+        .pp-voice:hover { background: rgba(255,255,255,0.12); border-color: rgba(255,255,255,0.2); transform: scale(1.05); }
+        .pp-voice:active { transform: scale(0.95); }
 
-        .pp-skip { width: 36px; height: 36px; border-radius: 50%; background: transparent; border: none; color: rgba(255,255,255,0.75); cursor: pointer; display: flex; align-items: center; justify-content: center; position: relative; }
-        .pp-skip:hover { color: white; }
-        .pp-skip svg { width: 22px; height: 22px; }
-        .pp-skip-num { position: absolute; font-size: 8px; font-weight: 700; font-family: var(--font-b); }
+        .pp-skip { width: 38px; height: 38px; border-radius: 50%; background: transparent; border: none; color: rgba(255,255,255,0.85); cursor: pointer; display: flex; align-items: center; justify-content: center; position: relative; transition: all 0.15s; }
+        .pp-skip:hover { color: white; background: rgba(255,255,255,0.08); }
+        .pp-skip:active { transform: scale(0.92); }
+        .pp-skip svg { width: 24px; height: 24px; }
+        .pp-skip-num { position: absolute; font-size: 8.5px; font-weight: 700; font-family: var(--font-b); letter-spacing: -0.3px; }
 
-        .play-btn { width: 48px; height: 48px; border-radius: 50%; background: white; border: none; color: #1A1A1A; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.15s; flex-shrink: 0; }
-        .play-btn:hover { transform: scale(1.06); background: #1A1A1A; color: white; }
-        .play-btn svg { width: 22px; height: 22px; }
+        .play-btn {
+            width: 52px; height: 52px;
+            border-radius: 50%;
+            background: linear-gradient(180deg, #fff, #f0f0f2);
+            border: none;
+            color: #1A1A1A;
+            cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            transition: all 0.15s cubic-bezier(.4,0,.2,1);
+            flex-shrink: 0;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3), 0 1px 0 rgba(255,255,255,0.5) inset;
+        }
+        .play-btn:hover { transform: scale(1.05); }
+        .play-btn:active { transform: scale(0.96); }
+        .play-btn svg { width: 22px; height: 22px; transition: transform 0.15s; }
 
-        .pp-speed { background: transparent; border: 1px solid rgba(255,255,255,0.25); color: rgba(255,255,255,0.75); border-radius: 14px; padding: 4px 10px; font-size: 12px; font-weight: 600; font-family: var(--font-b); cursor: pointer; white-space: nowrap; appearance: none; -webkit-appearance: none; }
-        .pp-speed:hover { border-color: rgba(255,255,255,0.5); color: white; }
+        .pp-speed {
+            background: rgba(255,255,255,0.08);
+            border: 0.5px solid rgba(255,255,255,0.12);
+            color: rgba(255,255,255,0.85);
+            border-radius: 16px;
+            padding: 5px 11px;
+            font-size: 12px; font-weight: 700;
+            font-family: var(--font-b);
+            cursor: pointer;
+            white-space: nowrap;
+            appearance: none; -webkit-appearance: none;
+            min-width: 42px;
+            text-align: center;
+            transition: all 0.15s;
+        }
+        .pp-speed:hover { background: rgba(255,255,255,0.14); border-color: rgba(255,255,255,0.2); color: white; }
         .pp-speed option { background: #2C2C2E; color: white; }
 
         /* Scroll to listening button */
@@ -257,10 +309,33 @@
             .book-grid { grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 14px; }
             .text-view { padding: 20px; }
             .text-view p { font-size: 16px; }
-            .player-bar { padding: 10px 14px; }
-            .pdf-main { padding: 12px; }
+            .pdf-main { padding: 8px; }
             .settings-panel { width: 100%; }
-            .reader-header { padding: 8px 12px; }
+            .reader-header { padding: 8px 10px; gap: 6px; }
+            .reader-title { font-size: 13px; max-width: 140px; overflow: hidden; text-overflow: ellipsis; }
+
+            /* Player mobile — full bleed */
+            .player-bar { padding: 0 8px max(10px, env(safe-area-inset-bottom)) 8px; }
+            .player-pill { max-width: none; border-radius: 16px; }
+            .pp-row1 { padding: 10px 14px 4px; gap: 8px; }
+            .pp-row2 { padding: 6px 12px 12px; gap: 14px; }
+            .pp-time { font-size: 10.5px; min-width: 44px; }
+            .pp-chapter { font-size: 12px; }
+            .pp-voice { width: 32px; height: 32px; font-size: 16px; }
+            .pp-skip { width: 40px; height: 40px; }
+            .pp-skip svg { width: 26px; height: 26px; }
+            .play-btn { width: 56px; height: 56px; }
+            .play-btn svg { width: 24px; height: 24px; }
+            .pp-speed { padding: 6px 10px; font-size: 11px; min-width: 40px; }
+
+            /* SVG highlight: garantir que renderiza no mobile */
+            .pdf-hl-svg { display: block; }
+            .pdf-page { max-width: 100%; }
+        }
+
+        /* iOS WebKit fallback para mix-blend-mode no SVG */
+        @supports (-webkit-touch-callout: none) {
+            .pdf-hl-svg { mix-blend-mode: multiply; }
         }
     </style>
 </head>
@@ -1190,20 +1265,21 @@ audio.addEventListener('loadedmetadata', () => {
     }
 });
 
-audio.addEventListener('timeupdate', () => {
-    if (audio.duration && isFinite(audio.duration)) {
-        // Cache duração do chunk atual para cálculo global
-        chunkDurations[currentChunkIndex] = audio.duration * 1000;
-        // Tempo + barra GLOBAIS do documento (estilo Speechify)
-        const curMs = getDocCurrentMs();
-        const totMs = getDocTotalMs();
-        const pct = totMs > 0 ? (curMs / totMs * 100) : 0;
-        document.getElementById('pFill').style.width = Math.min(100, pct) + '%';
-        document.getElementById('curTime').textContent = fmt(curMs / 1000);
-        const tt = document.getElementById('totTime');
-        if (tt) tt.textContent = fmt(totMs / 1000);
-    }
-});
+function refreshPlayerTime() {
+    if (!audio.duration || !isFinite(audio.duration)) return;
+    chunkDurations[currentChunkIndex] = audio.duration * 1000;
+    const curMs = getDocCurrentMs();
+    const totMs = getDocTotalMs();
+    const pct = totMs > 0 ? (curMs / totMs * 100) : 0;
+    document.getElementById('pFill').style.width = Math.min(100, pct) + '%';
+    // Tempos divididos pela VELOCIDADE — refletem tempo real até o fim
+    const speed = currentSpeed || 1;
+    document.getElementById('curTime').textContent = fmt((curMs / 1000) / speed);
+    const tt = document.getElementById('totTime');
+    if (tt) tt.textContent = fmt((totMs / 1000) / speed);
+}
+
+audio.addEventListener('timeupdate', refreshPlayerTime);
 
 audio.addEventListener('ended', async () => {
     stopHighlightLoop();
@@ -1251,7 +1327,7 @@ async function seekAudio(e) {
         }
     }
 }
-function setSpeed(s) { currentSpeed=s; audio.playbackRate=s; }
+function setSpeed(s) { currentSpeed = s; audio.playbackRate = s; refreshPlayerTime(); }
 
 function skipBack() { if(audio.src) audio.currentTime = Math.max(0, audio.currentTime - 10); }
 function skipForward() { if(audio.src) audio.currentTime = Math.min(audio.duration || 0, audio.currentTime + 10); }
