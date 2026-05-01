@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback, memo } from 'react';
+import { useEffect, useRef, useState, useCallback, useMemo, memo } from 'react';
 import {
   View, Text, Pressable, ActivityIndicator, FlatList, ScrollView,
   Dimensions, Alert, StyleSheet,
@@ -11,12 +11,13 @@ import { Audio, AVPlaybackStatus } from 'expo-av';
 import { BlurView } from 'expo-blur';
 import Svg, { Path } from 'react-native-svg';
 import {
-  getDocument, getChunkAudio, getPageWords, saveProgress,
-  audioUrl, pageImageUrl, coverUrl, type Chunk,
+  getDocument, getChunkAudio, getPageWords, getToc, saveProgress,
+  audioUrl, pageImageUrl, coverUrl, type Chunk, type TocItem,
 } from '@/lib/api';
 import {
   buildSentenceD, findNearestWord, sentenceRange,
-  findBoundaryByWordSequence, findBoundaryByWordSequenceScored, type Word,
+  findBoundaryByWordSequence, findBoundaryByWordSequenceScored,
+  buildWordTimingMap, type Word, type WordTimingMap,
 } from '@/lib/highlight';
 import { colors, fonts } from '@/lib/theme';
 
@@ -44,10 +45,17 @@ export default function Reader() {
     queryFn: () => getDocument(docId),
   });
 
+  // TOC pra mostrar nome do capítulo no player
+  const { data: toc } = useQuery({
+    queryKey: ['toc', docId],
+    queryFn: () => getToc(docId),
+  });
+
   const [viewMode, setViewMode] = useState<ViewMode>('pdf');
   const [chunkIdx, setChunkIdx] = useState(0);
   const [boundaries, setBoundaries] = useState<Boundary[]>([]);
   const [pageWords, setPageWords] = useState<Record<number, Word[]>>({});
+  const [pageTimings, setPageTimings] = useState<Record<number, WordTimingMap>>({});
   const [activeBIdx, setActiveBIdx] = useState(-1);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLoadingAudio, setIsLoadingAudio] = useState(false);
@@ -84,18 +92,39 @@ export default function Reader() {
     }
   }, [data?.document?.id]);
 
+  // Pré-carrega palavras + mapa de timing das próximas páginas
+  // O mapa palavra→offset_ms é o que dá precisão Speechify-level no click
   useEffect(() => {
     if (!data) return;
     const chunk = data.chunks[chunkIdx];
     if (!chunk) return;
     const pages = [chunk.page, chunk.page + 1, chunk.page + 2]
       .filter(p => p >= 1 && p <= data.document.total_pages);
+
     pages.forEach(async (p) => {
-      if (pageWords[p]) return;
       try {
-        const words = await getPageWords(docId, p);
-        setPageWords(prev => ({ ...prev, [p]: words }));
-      } catch {}
+        // 1) Palavras da página com posições
+        let words = pageWords[p];
+        if (!words) {
+          words = await getPageWords(docId, p);
+          setPageWords(prev => ({ ...prev, [p]: words }));
+        }
+        // 2) Mapa de timing (se ainda não tem)
+        if (pageTimings[p]) return;
+        const pageChunks = data.chunks.filter(c => c.page === p);
+        if (!pageChunks.length) return;
+        const audios = await Promise.all(
+          pageChunks.map(c => getChunkAudio(docId, c.index).catch(() => null))
+        );
+        const valid = pageChunks
+          .map((c, i) => audios[i] ? { index: c.index, boundaries: audios[i]!.boundaries } : null)
+          .filter((x): x is { index: number; boundaries: Boundary[] } => !!x);
+        if (!valid.length) return;
+        const map = buildWordTimingMap(words, valid);
+        setPageTimings(prev => ({ ...prev, [p]: map }));
+      } catch (e) {
+        console.warn('preload page', p, e);
+      }
     });
   }, [chunkIdx, data?.document?.id]);
 
@@ -200,10 +229,12 @@ export default function Reader() {
     setActiveBIdx(idx);
   }, [posMs, boundaries]);
 
+  // Click em qualquer palavra → lookup no mapa pré-construído (precisão Speechify)
   const handlePagePress = useCallback(async (page: number, relX: number, relY: number) => {
     if (!data || isLoadingAudio) return;
     setIsLoadingAudio(true);
     try {
+      // Garantir words + timing map
       let words = pageWords[page];
       if (!words) {
         words = await getPageWords(docId, page);
@@ -211,46 +242,46 @@ export default function Reader() {
       }
       if (!words.length) return;
 
+      let timingMap = pageTimings[page];
+      if (!timingMap) {
+        const pageChunks = data.chunks.filter(c => c.page === page);
+        const audios = await Promise.all(
+          pageChunks.map(c => getChunkAudio(docId, c.index).catch(() => null))
+        );
+        const valid = pageChunks
+          .map((c, i) => audios[i] ? { index: c.index, boundaries: audios[i]!.boundaries } : null)
+          .filter((x): x is { index: number; boundaries: Boundary[] } => !!x);
+        timingMap = buildWordTimingMap(words, valid);
+        setPageTimings(prev => ({ ...prev, [page]: timingMap! }));
+      }
+
       const wordIdx = findNearestWord(words, clamp(relX, 0, 1), clamp(relY, 0, 1));
-      const [start] = sentenceRange(words, wordIdx);
-      const contextWords = words.slice(start, start + 12).map(w => w.word);
 
-      // Candidatos: chunks da página atual ± 1 (cobre quebras de página)
-      const candidates = data.chunks.filter(c => Math.abs(c.page - page) <= 1);
-      if (!candidates.length) return;
-
-      // Buscar boundaries de TODOS em paralelo e escolher o melhor score
-      const audios = await Promise.all(
-        candidates.map(c => getChunkAudio(docId, c.index).catch(() => null))
-      );
-      let bestIdx = -1, bestScore = 0, bestBoundary = -1, bestAudio: any = null;
-      for (let k = 0; k < candidates.length; k++) {
-        const a = audios[k];
-        if (!a?.boundaries?.length) continue;
-        const { idx, score } = findBoundaryByWordSequenceScored(contextWords, a.boundaries);
-        if (score > bestScore) {
-          bestScore = score;
-          bestIdx = candidates[k].index;
-          bestBoundary = idx;
-          bestAudio = a;
-        }
+      // Lookup direto no mapa: palavra clicada → exact offset_ms
+      let target = timingMap[wordIdx];
+      // Fallback se buraco no mapa: vizinhos
+      for (let d = 1; !target && d < 5; d++) {
+        target = timingMap[wordIdx + d] ?? timingMap[wordIdx - d];
       }
-
-      // Sem nenhum match — fallback: chunk com page exata, seek 0
-      if (bestIdx === -1) {
+      if (!target) {
+        // último fallback: primeiro chunk da página
         const sameP = data.chunks.find(c => c.page === page);
-        bestIdx = sameP?.index ?? 0;
+        if (sameP) await playChunk(sameP.index, 0);
+        return;
       }
 
-      if (bestAudio) setBoundaries(bestAudio.boundaries);
-      const seekMs = bestBoundary >= 0 && bestAudio ? bestAudio.boundaries[bestBoundary].offset_ms : 0;
-      console.log('[click]', { chunkIdx: bestIdx, score: bestScore, seekMs });
-      await playChunk(bestIdx, seekMs);
+      console.log('[click] palavra', wordIdx, '→ chunk', target.chunkIdx, '@', target.offsetMs, 'ms');
+
+      // Atualizar boundaries pra UI da frase atual ficar correta
+      const audio = await getChunkAudio(docId, target.chunkIdx);
+      setBoundaries(audio.boundaries);
+
+      await playChunk(target.chunkIdx, target.offsetMs);
     } catch (e: any) {
       console.warn('handlePagePress:', e);
       setIsLoadingAudio(false);
     }
-  }, [data, docId, pageWords, playChunk, isLoadingAudio]);
+  }, [data, docId, pageWords, pageTimings, playChunk, isLoadingAudio]);
 
   if (isLoading || !data) {
     return (
@@ -262,6 +293,16 @@ export default function Reader() {
 
   const doc = data.document;
   const chunk = data.chunks[chunkIdx];
+
+  // Nome do capítulo via TOC (último item cuja página <= página atual)
+  const currentPage = chunk?.page || 1;
+  const chapterName = (() => {
+    if (!toc?.length) return null;
+    for (let i = toc.length - 1; i >= 0; i--) {
+      if (toc[i].page <= currentPage) return toc[i].title;
+    }
+    return null;
+  })();
 
   // Tempo: prefere duração real do áudio carregado, depois server (DB), depois estimativa
   const AVG = 50000;
@@ -334,7 +375,7 @@ export default function Reader() {
       <View style={[styles.playerFloat, { paddingBottom: insets.bottom + 8 }]} pointerEvents="box-none">
         <Player
           coverId={doc.id}
-          chapter={`Trecho ${chunkIdx + 1}/${data.chunks.length}`}
+          chapter={chapterName || `Página ${currentPage}`}
           page={chunk?.page || 1}
           totalPages={doc.total_pages}
           elapsed={elapsed / speed}

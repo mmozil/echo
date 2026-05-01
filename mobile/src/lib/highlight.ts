@@ -99,6 +99,62 @@ export function findNearestWord(words: Word[], relX: number, relY: number): numb
 // Match por sequência no .text dos boundaries do TTS (mesma lógica do web)
 const clean = (s: string) => (s || '').toLowerCase().replace(/[.,;:!?"'()\[\]\-]/g, '').trim();
 
+// Mapa: index da palavra na PÁGINA → posição no áudio (chunk + offset_ms)
+// Construído alinhando os boundaries do TTS com as palavras da página em ordem
+export type WordTimingMap = Array<{ chunkIdx: number; offsetMs: number } | null>;
+
+export function buildWordTimingMap(
+  pageWords: Word[],
+  chunks: Array<{ index: number; boundaries: Array<{ offset_ms: number; text: string }> }>
+): WordTimingMap {
+  const map: WordTimingMap = new Array(pageWords.length).fill(null);
+  if (!pageWords.length || !chunks.length) return map;
+
+  // Achata todas as boundaries dos chunks em ordem cronológica
+  const flat: { chunkIdx: number; offsetMs: number; word: string }[] = [];
+  for (const c of chunks) {
+    for (const b of c.boundaries) {
+      flat.push({ chunkIdx: c.index, offsetMs: b.offset_ms, word: clean(b.text) });
+    }
+  }
+  if (!flat.length) return map;
+
+  // Alinhamento sequencial: cada page word avança o ponteiro de boundary
+  // Tolera TTS pulando palavras curtas (a, e, o) e juntando números
+  let bi = 0;
+  for (let pi = 0; pi < pageWords.length; pi++) {
+    const pw = clean(pageWords[pi].word);
+    if (!pw) continue;
+
+    // Procura match dentro de uma janela à frente (até 8 boundaries)
+    let found = -1;
+    for (let k = 0; k < 8 && bi + k < flat.length; k++) {
+      const bw = flat[bi + k].word;
+      if (!bw) continue;
+      if (bw === pw || (pw.length >= 3 && (bw.startsWith(pw) || pw.startsWith(bw)))) {
+        found = bi + k;
+        break;
+      }
+    }
+    if (found >= 0) {
+      map[pi] = { chunkIdx: flat[found].chunkIdx, offsetMs: flat[found].offsetMs };
+      bi = found + 1;
+    } else {
+      // Sem match nesta janela — herda da palavra anterior (mesma frase, tempo próximo)
+      if (pi > 0 && map[pi - 1]) map[pi] = map[pi - 1];
+    }
+  }
+
+  // Preenche buracos no início: usa a primeira entrada não-nula
+  let firstValid: { chunkIdx: number; offsetMs: number } | null = null;
+  for (let i = 0; i < map.length; i++) { if (map[i]) { firstValid = map[i]; break; } }
+  if (firstValid) {
+    for (let i = 0; i < map.length && !map[i]; i++) map[i] = firstValid;
+  }
+
+  return map;
+}
+
 export function findBoundaryByWordSequenceScored(
   contextWords: string[],
   boundaries: Array<{ text: string }>

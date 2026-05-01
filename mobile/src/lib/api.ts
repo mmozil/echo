@@ -88,6 +88,13 @@ export async function getDocument(id: string): Promise<DocDetail> {
   return r.data;
 }
 
+export type TocItem = { level: number; title: string; page: number };
+
+export async function getToc(docId: string): Promise<TocItem[]> {
+  const r = await api.get(`/api/documents/${docId}/toc`);
+  return r.data.toc || [];
+}
+
 export async function getChunkAudio(docId: string, chunkIndex: number, voice = '') {
   const r = await api.post(`/api/documents/${docId}/chunks/${chunkIndex}/audio`, null, {
     params: { rate: '+0%', pitch: '+0Hz', voice },
