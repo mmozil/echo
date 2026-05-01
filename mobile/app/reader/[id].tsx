@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback, useMemo, memo } from 'react';
 import {
   View, Text, Pressable, ActivityIndicator, FlatList, ScrollView,
-  Dimensions, Alert, StyleSheet,
+  Dimensions, Alert, StyleSheet, Modal,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -492,6 +492,8 @@ function TextView({ docId, chunks, chunkIdx, boundaries, activeBIdx, onPlayChunk
 }
 
 // ===== Player =====
+const SPEED_OPTIONS = [0.75, 1, 1.25, 1.5, 2];
+
 function Player({ coverId, chapter, page, totalPages, elapsed, total, pct, isPlaying, isLoading, onPlayPause, onSkip10, speed, onSpeedChange }: {
   coverId: string; chapter: string; page: number; totalPages: number;
   elapsed: number; total: number; pct: number;
@@ -500,8 +502,14 @@ function Player({ coverId, chapter, page, totalPages, elapsed, total, pct, isPla
   speed: number; onSpeedChange: (s: number) => void;
 }) {
   const [coverFailed, setCoverFailed] = useState(false);
+  const [speedOpen, setSpeedOpen] = useState(false);
+
+  // Formato compacto: "1×" "1.5×" "0.75×"
+  const speedLabel = (Number.isInteger(speed) ? `${speed}` : `${speed}`) + '×';
+
   return (
-    <BlurView intensity={45} tint="dark" style={styles.playerPill}>
+    <>
+      <BlurView intensity={45} tint="dark" style={styles.playerPill}>
         <View style={styles.progressBar}>
           <View style={[styles.progressFill, { width: `${pct}%` }]} />
         </View>
@@ -527,7 +535,7 @@ function Player({ coverId, chapter, page, totalPages, elapsed, total, pct, isPla
             </Text>
           </View>
 
-          <Pressable onPress={() => onSkip10(-1)} hitSlop={6} style={styles.skipBtn}>
+          <Pressable onPress={() => onSkip10(-1)} hitSlop={4} style={styles.skipBtn}>
             <SkipIcon dir="back" />
             <Text style={styles.skipNum}>10</Text>
           </Pressable>
@@ -546,27 +554,44 @@ function Player({ coverId, chapter, page, totalPages, elapsed, total, pct, isPla
             )}
           </Pressable>
 
-          <Pressable onPress={() => onSkip10(1)} hitSlop={6} style={styles.skipBtn}>
+          <Pressable onPress={() => onSkip10(1)} hitSlop={4} style={styles.skipBtn}>
             <SkipIcon dir="fwd" />
             <Text style={styles.skipNum}>10</Text>
           </Pressable>
-        </View>
 
-        <View style={styles.speedRow}>
-          {[0.75, 1, 1.25, 1.5, 2].map(s => {
-            const active = speed === s;
-            return (
-              <Pressable
-                key={s}
-                onPress={() => onSpeedChange(s)}
-                style={[styles.speedPill, active && styles.speedPillActive]}
-              >
-                <Text style={[styles.speedText, active && styles.speedTextActive]}>{s}×</Text>
-              </Pressable>
-            );
-          })}
+          <Pressable onPress={() => setSpeedOpen(true)} style={styles.speedBtn} hitSlop={4}>
+            <Text style={styles.speedBtnText}>{speedLabel}</Text>
+          </Pressable>
         </View>
-    </BlurView>
+      </BlurView>
+
+      {/* Modal de seleção de velocidade */}
+      <Modal
+        visible={speedOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setSpeedOpen(false)}
+      >
+        <Pressable style={styles.sheetBackdrop} onPress={() => setSpeedOpen(false)}>
+          <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
+            <Text style={styles.sheetTitle}>Velocidade</Text>
+            {SPEED_OPTIONS.map(s => {
+              const active = speed === s;
+              return (
+                <Pressable
+                  key={s}
+                  onPress={() => { onSpeedChange(s); setSpeedOpen(false); }}
+                  style={({ pressed }) => [styles.sheetItem, pressed && styles.sheetItemPressed]}
+                >
+                  <Text style={[styles.sheetItemText, active && styles.sheetItemActive]}>{s}×</Text>
+                  {active ? <Text style={styles.sheetCheck}>✓</Text> : null}
+                </Pressable>
+              );
+            })}
+          </Pressable>
+        </Pressable>
+      </Modal>
+    </>
   );
 }
 
@@ -716,22 +741,51 @@ const styles = StyleSheet.create({
   },
   playGlyph: { color: colors.ink, fontSize: 16, fontWeight: '900' },
 
-  speedRow: {
-    flexDirection: 'row',
+  speedBtn: {
+    height: 28, minWidth: 38,
+    paddingHorizontal: 8,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderWidth: 0.5, borderColor: 'rgba(255,255,255,0.12)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  speedBtnText: {
+    color: 'white',
+    fontSize: 11.5, fontWeight: '700',
+    letterSpacing: -0.2,
+  },
+
+  // Sheet de velocidade
+  sheetBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
     justifyContent: 'flex-end',
-    paddingHorizontal: 12, paddingBottom: 11,
-    gap: 6,
   },
-  speedPill: {
-    paddingHorizontal: 9, paddingVertical: 4,
-    borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    borderWidth: 0.5, borderColor: 'rgba(255,255,255,0.1)',
+  sheet: {
+    backgroundColor: 'white',
+    borderTopLeftRadius: 18, borderTopRightRadius: 18,
+    padding: 16, paddingBottom: 32,
   },
-  speedPillActive: {
-    backgroundColor: 'rgba(171,179,254,0.25)',
-    borderColor: 'rgba(171,179,254,0.4)',
+  sheetTitle: {
+    fontSize: 13, fontWeight: '600',
+    color: colors.slate,
+    textAlign: 'center',
+    marginBottom: 8,
+    letterSpacing: 0.3,
+    textTransform: 'uppercase',
   },
-  speedText: { color: 'rgba(255,255,255,0.7)', fontSize: 11, fontWeight: '700' },
-  speedTextActive: { color: '#ABB3FE' },
+  sheetItem: {
+    flexDirection: 'row',
+    alignItems: 'center', justifyContent: 'space-between',
+    paddingVertical: 14, paddingHorizontal: 12,
+    borderRadius: 10,
+  },
+  sheetItemPressed: { backgroundColor: colors.cloud },
+  sheetItemText: {
+    fontSize: 17, fontWeight: '500',
+    color: colors.charcoal,
+    fontFamily: fonts.display,
+  },
+  sheetItemActive: { color: colors.ink, fontWeight: '700' },
+  sheetCheck: { fontSize: 18, color: colors.ink, fontWeight: '900' },
 });
