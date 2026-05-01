@@ -1,7 +1,9 @@
 import { useState } from 'react';
-import { View, Text, TextInput, Pressable, ActivityIndicator, KeyboardAvoidingView, Platform, Alert } from 'react-native';
+import { View, Text, TextInput, Pressable, ActivityIndicator, KeyboardAvoidingView, Platform, Alert, StyleSheet } from 'react-native';
 import { router } from 'expo-router';
 import { login } from '@/lib/api';
+import { EchoLogo } from '@/components/EchoLogo';
+import { colors, fonts } from '@/lib/theme';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -22,24 +24,16 @@ export default function Login() {
   }
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      style={{ flex: 1, backgroundColor: '#0F0F12' }}
-    >
-      <View style={{ flex: 1, justifyContent: 'center', padding: 28 }}>
-        {/* Logo */}
-        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 48, gap: 8 }}>
-          <View style={{ width: 28, height: 28, position: 'relative' }}>
-            <View style={{ position: 'absolute', width: 8, height: 8, backgroundColor: '#001a4d', top: 0, left: 0 }} />
-            <View style={{ position: 'absolute', width: 8, height: 8, backgroundColor: '#003083', top: 8, left: 8 }} />
-            <View style={{ position: 'absolute', width: 8, height: 8, backgroundColor: '#0050D5', top: 16, left: 16 }} />
-          </View>
-          <Text style={{ color: 'white', fontSize: 28, fontWeight: '800', letterSpacing: -1 }}>echo.</Text>
+    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.container}>
+      <View style={styles.inner}>
+        <View style={styles.logoRow}>
+          <EchoLogo size="lg" />
         </View>
 
-        <Text style={{ color: 'white', fontSize: 22, fontWeight: '700', marginBottom: 24 }}>Entrar</Text>
+        <Text style={styles.title}>Entrar</Text>
+        <Text style={styles.subtitle}>Sua biblioteca persiste entre web e celular</Text>
 
-        <Text style={{ color: 'rgba(255,255,255,0.7)', fontSize: 13, marginBottom: 6 }}>Email</Text>
+        <Text style={styles.label}>Email</Text>
         <TextInput
           value={email}
           onChangeText={setEmail}
@@ -47,56 +41,57 @@ export default function Login() {
           keyboardType="email-address"
           autoComplete="email"
           placeholder="seu@email.com"
-          placeholderTextColor="rgba(255,255,255,0.3)"
-          style={{
-            backgroundColor: 'rgba(255,255,255,0.06)',
-            color: 'white',
-            paddingHorizontal: 14, paddingVertical: 14,
-            borderRadius: 12, fontSize: 15,
-            marginBottom: 16,
-            borderWidth: 0.5, borderColor: 'rgba(255,255,255,0.1)',
-          }}
+          placeholderTextColor={colors.mist}
+          style={styles.input}
         />
 
-        <Text style={{ color: 'rgba(255,255,255,0.7)', fontSize: 13, marginBottom: 6 }}>Senha</Text>
+        <Text style={styles.label}>Senha</Text>
         <TextInput
           value={password}
           onChangeText={setPassword}
           secureTextEntry
           autoComplete="password"
           placeholder="••••••••"
-          placeholderTextColor="rgba(255,255,255,0.3)"
-          style={{
-            backgroundColor: 'rgba(255,255,255,0.06)',
-            color: 'white',
-            paddingHorizontal: 14, paddingVertical: 14,
-            borderRadius: 12, fontSize: 15,
-            marginBottom: 24,
-            borderWidth: 0.5, borderColor: 'rgba(255,255,255,0.1)',
-          }}
+          placeholderTextColor={colors.mist}
+          style={styles.input}
           onSubmitEditing={onSubmit}
         />
 
         <Pressable
           onPress={onSubmit}
           disabled={loading}
-          style={({ pressed }) => ({
-            backgroundColor: '#ABB3FE',
-            paddingVertical: 14,
-            borderRadius: 12,
-            alignItems: 'center',
-            opacity: pressed || loading ? 0.85 : 1,
-          })}
+          style={({ pressed }) => [styles.btn, { opacity: pressed || loading ? 0.85 : 1 }]}
         >
-          {loading ? <ActivityIndicator color="#0F0F12" /> : (
-            <Text style={{ color: '#0F0F12', fontWeight: '700', fontSize: 15 }}>Continuar</Text>
+          {loading ? <ActivityIndicator color={colors.snow} /> : (
+            <Text style={styles.btnText}>Continuar</Text>
           )}
         </Pressable>
-
-        <Text style={{ color: 'rgba(255,255,255,0.4)', fontSize: 12, textAlign: 'center', marginTop: 28 }}>
-          Sua biblioteca persiste entre web e celular
-        </Text>
       </View>
     </KeyboardAvoidingView>
   );
 }
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.snow },
+  inner: { flex: 1, justifyContent: 'center', padding: 28 },
+  logoRow: { marginBottom: 48 },
+  title: { color: colors.ink, fontSize: 26, fontWeight: '700', fontFamily: fonts.display, letterSpacing: -0.5, marginBottom: 4 },
+  subtitle: { color: colors.slate, fontSize: 13, marginBottom: 28 },
+  label: { color: colors.charcoal, fontSize: 12, fontWeight: '500', marginBottom: 6, letterSpacing: 0.2 },
+  input: {
+    backgroundColor: colors.white,
+    color: colors.ink,
+    paddingHorizontal: 14, paddingVertical: 13,
+    borderRadius: 10, fontSize: 15,
+    marginBottom: 16,
+    borderWidth: 1, borderColor: colors.border,
+  },
+  btn: {
+    backgroundColor: colors.ink,
+    paddingVertical: 14,
+    borderRadius: 10,
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  btnText: { color: colors.snow, fontWeight: '600', fontSize: 15, letterSpacing: -0.1, fontFamily: fonts.body },
+});

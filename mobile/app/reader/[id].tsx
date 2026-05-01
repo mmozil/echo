@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback, memo } from 'react';
 import {
-  View, Text, Pressable, ActivityIndicator, Image, FlatList,
+  View, Text, Pressable, ActivityIndicator, Image, FlatList, ScrollView,
   Dimensions, Alert, StyleSheet,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -16,15 +16,18 @@ import {
   buildSentenceD, findNearestWord, sentenceRange,
   findBoundaryByWordSequence, type Word,
 } from '@/lib/highlight';
+import { colors, fonts } from '@/lib/theme';
 
 const SCREEN_W = Dimensions.get('window').width;
-const PAGE_RATIO = 0.71; // PDF ratio típico (A4-ish)
+const PAGE_RATIO = 0.71;
 const PAGE_HEIGHT = SCREEN_W / PAGE_RATIO;
 
 type Boundary = { offset_ms: number; duration_ms: number; text: string };
+type ViewMode = 'pdf' | 'text';
 
 const norm = (s: string) =>
   (s || '').toLowerCase().replace(/[.,;:!?"'()\[\]\-—–“”‘’]/g, '').replace(/\s+/g, ' ').trim();
+const clamp = (n: number, min: number, max: number) => Math.max(min, Math.min(max, n));
 
 export default function Reader() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -35,6 +38,7 @@ export default function Reader() {
     queryFn: () => getDocument(docId),
   });
 
+  const [viewMode, setViewMode] = useState<ViewMode>('pdf');
   const [chunkIdx, setChunkIdx] = useState(0);
   const [boundaries, setBoundaries] = useState<Boundary[]>([]);
   const [pageWords, setPageWords] = useState<Record<number, Word[]>>({});
@@ -49,6 +53,8 @@ export default function Reader() {
   const chunkDur = useRef<Record<number, number>>({});
   const userScrollingRef = useRef(false);
   const userScrollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Sequência para abortar plays antigos (anti-overlap)
+  const playSeqRef = useRef(0);
 
   // Áudio em background
   useEffect(() => {
@@ -59,17 +65,18 @@ export default function Reader() {
       interruptionModeIOS: 1,
       interruptionModeAndroid: 1,
     }).catch(() => {});
-    return () => { soundRef.current?.unloadAsync().catch(() => {}); };
+    return () => {
+      playSeqRef.current++; // invalida loads pendentes
+      soundRef.current?.unloadAsync().catch(() => {});
+    };
   }, []);
 
-  // Restaura progresso ao abrir
   useEffect(() => {
     if (data?.progress?.current_chunk != null) {
       setChunkIdx(data.progress.current_chunk);
     }
   }, [data?.document?.id]);
 
-  // Pré-carrega palavras das páginas próximas
   useEffect(() => {
     if (!data) return;
     const chunk = data.chunks[chunkIdx];
@@ -85,29 +92,28 @@ export default function Reader() {
     });
   }, [chunkIdx, data?.document?.id]);
 
-  // Auto-scroll para a página do chunk atual (a menos que user esteja rolando)
+  // Auto-scroll pra página atual durante playback (PDF view)
   useEffect(() => {
-    if (!data || userScrollingRef.current) return;
+    if (viewMode !== 'pdf' || !data || userScrollingRef.current) return;
     const chunk = data.chunks[chunkIdx];
     if (!chunk) return;
-    flatRef.current?.scrollToIndex({
-      index: chunk.page - 1,
-      animated: true,
-      viewPosition: 0.1, // página atual fica 10% do topo
-    });
-  }, [chunkIdx, data?.document?.id]);
+    flatRef.current?.scrollToIndex({ index: chunk.page - 1, animated: true, viewPosition: 0.1 });
+  }, [chunkIdx, data?.document?.id, viewMode]);
 
-  // Toca chunk
+  // Toca chunk com proteção anti-overlap
   const playChunk = useCallback(async (idx: number, seekToMs = 0) => {
     if (!data) return;
+    const seq = ++playSeqRef.current;
     setIsLoadingAudio(true);
     try {
-      if (soundRef.current) {
-        await soundRef.current.unloadAsync().catch(() => {});
-        soundRef.current = null;
-      }
+      // Para qualquer áudio anterior PRIMEIRO (sincronamente)
+      const prev = soundRef.current;
+      soundRef.current = null;
+      if (prev) await prev.unloadAsync().catch(() => {});
+      if (seq !== playSeqRef.current) return; // outro play sobrescreveu
 
       const audio = await getChunkAudio(docId, idx);
+      if (seq !== playSeqRef.current) return;
       setBoundaries(audio.boundaries);
 
       const { sound } = await Audio.Sound.createAsync(
@@ -116,9 +122,7 @@ export default function Reader() {
         (status: AVPlaybackStatus) => {
           if (!status.isLoaded) return;
           setPosMs(status.positionMillis || 0);
-          if (status.durationMillis) {
-            chunkDur.current[idx] = status.durationMillis;
-          }
+          if (status.durationMillis) chunkDur.current[idx] = status.durationMillis;
           setIsPlaying(status.isPlaying);
           if (status.didJustFinish) {
             const nextIdx = idx + 1;
@@ -131,13 +135,18 @@ export default function Reader() {
           }
         }
       );
+      // Se outro play começou enquanto carregávamos, descartar este
+      if (seq !== playSeqRef.current) {
+        sound.unloadAsync().catch(() => {});
+        return;
+      }
       soundRef.current = sound;
       setChunkIdx(idx);
       saveProgress(docId, idx, seekToMs).catch(() => {});
     } catch (e: any) {
       Alert.alert('Erro', e?.message || 'Falha ao carregar áudio');
     } finally {
-      setIsLoadingAudio(false);
+      if (seq === playSeqRef.current) setIsLoadingAudio(false);
     }
   }, [data, docId, speed]);
 
@@ -147,10 +156,7 @@ export default function Reader() {
       return;
     }
     const status = await soundRef.current.getStatusAsync();
-    if (!status.isLoaded) {
-      await playChunk(chunkIdx, 0);
-      return;
-    }
+    if (!status.isLoaded) { await playChunk(chunkIdx, 0); return; }
     if (status.isPlaying) await soundRef.current.pauseAsync();
     else await soundRef.current.playAsync();
   }, [chunkIdx, playChunk]);
@@ -164,7 +170,6 @@ export default function Reader() {
     });
   }, []);
 
-  // Atualizar boundary ativo
   useEffect(() => {
     if (!boundaries.length) { setActiveBIdx(-1); return; }
     let idx = -1;
@@ -175,9 +180,8 @@ export default function Reader() {
     setActiveBIdx(idx);
   }, [posMs, boundaries]);
 
-  // Click numa página → walkback frase → seek exato (igual desktop)
   const handlePagePress = useCallback(async (page: number, relX: number, relY: number) => {
-    if (!data) return;
+    if (!data || isLoadingAudio) return;
     setIsLoadingAudio(true);
     try {
       let words = pageWords[page];
@@ -187,23 +191,21 @@ export default function Reader() {
       }
       if (!words.length) return;
 
-      const wordIdx = findNearestWord(words, relX, relY);
+      const wordIdx = findNearestWord(words, clamp(relX, 0, 1), clamp(relY, 0, 1));
       const [start] = sentenceRange(words, wordIdx);
       const contextWords = words.slice(start, start + 12).map(w => w.word);
 
-      // Achar chunk que contém o contexto, varrendo entre chunks da página +/- 1
-      const ctx2Norm = norm(contextWords.slice(0, 3).join(' '));
+      const ctx3Norm = norm(contextWords.slice(0, 3).join(' '));
       let chunkMatchIdx = -1;
       const candidates = data.chunks.filter(c => Math.abs(c.page - page) <= 1);
       for (const c of candidates) {
-        if (norm(c.text).includes(ctx2Norm)) { chunkMatchIdx = c.index; break; }
+        if (norm(c.text).includes(ctx3Norm)) { chunkMatchIdx = c.index; break; }
       }
       if (chunkMatchIdx === -1) {
         const sameP = data.chunks.find(c => c.page === page);
         chunkMatchIdx = sameP?.index ?? 0;
       }
 
-      // Carregar áudio + match exato no boundaries
       const audio = await getChunkAudio(docId, chunkMatchIdx);
       setBoundaries(audio.boundaries);
       const bIdx = findBoundaryByWordSequence(contextWords, audio.boundaries);
@@ -211,15 +213,14 @@ export default function Reader() {
       await playChunk(chunkMatchIdx, seekMs);
     } catch (e: any) {
       console.warn('handlePagePress:', e);
-    } finally {
       setIsLoadingAudio(false);
     }
-  }, [data, docId, pageWords, playChunk]);
+  }, [data, docId, pageWords, playChunk, isLoadingAudio]);
 
   if (isLoading || !data) {
     return (
       <View style={[styles.fill, styles.center]}>
-        <ActivityIndicator color="#ABB3FE" />
+        <ActivityIndicator color={colors.ink} />
       </View>
     );
   }
@@ -227,7 +228,6 @@ export default function Reader() {
   const doc = data.document;
   const chunk = data.chunks[chunkIdx];
 
-  // Tempo global (estilo Speechify): elapsed/total dividido pela velocidade
   const AVG = 50000;
   let elapsed = 0;
   for (let i = 0; i < chunkIdx; i++) elapsed += chunkDur.current[i] || AVG;
@@ -238,46 +238,59 @@ export default function Reader() {
 
   return (
     <SafeAreaView style={styles.fill} edges={['top', 'left', 'right']}>
-      {/* Header */}
       <View style={styles.header}>
         <Pressable onPress={() => router.back()} hitSlop={10} style={styles.backBtn}>
           <Text style={styles.backChevron}>‹</Text>
         </Pressable>
         <Text numberOfLines={1} style={styles.headerTitle}>{doc.title}</Text>
-        <Text style={styles.headerPage}>
-          {chunk?.page || '—'}/{doc.total_pages}
-        </Text>
+        <View style={styles.viewToggle}>
+          <Pressable onPress={() => setViewMode('pdf')} style={[styles.viewBtn, viewMode === 'pdf' && styles.viewBtnActive]}>
+            <Text style={[styles.viewBtnText, viewMode === 'pdf' && styles.viewBtnTextActive]}>PDF</Text>
+          </Pressable>
+          <Pressable onPress={() => setViewMode('text')} style={[styles.viewBtn, viewMode === 'text' && styles.viewBtnActive]}>
+            <Text style={[styles.viewBtnText, viewMode === 'text' && styles.viewBtnTextActive]}>Texto</Text>
+          </Pressable>
+        </View>
       </View>
 
-      {/* Lista vertical de páginas */}
-      <FlatList
-        ref={flatRef}
-        data={Array.from({ length: doc.total_pages }, (_, i) => i + 1)}
-        keyExtractor={(p) => String(p)}
-        showsVerticalScrollIndicator={false}
-        getItemLayout={(_, i) => ({ length: PAGE_HEIGHT + 8, offset: (PAGE_HEIGHT + 8) * i, index: i })}
-        onScrollBeginDrag={() => {
-          userScrollingRef.current = true;
-          if (userScrollTimer.current) clearTimeout(userScrollTimer.current);
-        }}
-        onMomentumScrollEnd={() => {
-          if (userScrollTimer.current) clearTimeout(userScrollTimer.current);
-          userScrollTimer.current = setTimeout(() => { userScrollingRef.current = false; }, 5000);
-        }}
-        renderItem={({ item: page }) => (
-          <PdfPage
-            docId={docId}
-            page={page}
-            words={pageWords[page]}
-            isActive={chunk?.page === page}
-            boundaries={boundaries}
-            activeBIdx={activeBIdx}
-            onPress={(relX, relY) => handlePagePress(page, relX, relY)}
-          />
-        )}
-      />
+      {viewMode === 'pdf' ? (
+        <FlatList
+          ref={flatRef}
+          data={Array.from({ length: doc.total_pages }, (_, i) => i + 1)}
+          keyExtractor={(p) => String(p)}
+          showsVerticalScrollIndicator={false}
+          getItemLayout={(_, i) => ({ length: PAGE_HEIGHT + 8, offset: (PAGE_HEIGHT + 8) * i, index: i })}
+          onScrollBeginDrag={() => {
+            userScrollingRef.current = true;
+            if (userScrollTimer.current) clearTimeout(userScrollTimer.current);
+          }}
+          onMomentumScrollEnd={() => {
+            if (userScrollTimer.current) clearTimeout(userScrollTimer.current);
+            userScrollTimer.current = setTimeout(() => { userScrollingRef.current = false; }, 5000);
+          }}
+          renderItem={({ item: page }) => (
+            <PdfPage
+              docId={docId}
+              page={page}
+              words={pageWords[page]}
+              isActive={chunk?.page === page}
+              boundaries={boundaries}
+              activeBIdx={activeBIdx}
+              onPress={(relX, relY) => handlePagePress(page, relX, relY)}
+            />
+          )}
+        />
+      ) : (
+        <TextView
+          docId={docId}
+          chunks={data.chunks}
+          chunkIdx={chunkIdx}
+          boundaries={boundaries}
+          activeBIdx={activeBIdx}
+          onPlayChunk={(i) => playChunk(i, 0)}
+        />
+      )}
 
-      {/* Player */}
       <Player
         coverId={doc.id}
         chapter={`Trecho ${chunkIdx + 1}/${data.chunks.length}`}
@@ -326,7 +339,7 @@ const PdfPage = memo(function PdfPage({ docId, page, words, isActive, boundaries
       <Image
         source={{ uri: pageImageUrl(docId, page) }}
         style={styles.pageImg}
-        resizeMode="contain"
+        resizeMode="stretch"
       />
       {pathD ? (
         <Svg
@@ -336,14 +349,39 @@ const PdfPage = memo(function PdfPage({ docId, page, words, isActive, boundaries
           style={StyleSheet.absoluteFill}
           pointerEvents="none"
         >
-          <Path d={pathD} fill="rgba(165, 175, 250, 0.42)" />
+          <Path d={pathD} fill={colors.hlSentence} />
         </Svg>
       ) : null}
     </Pressable>
   );
 });
 
-// ===== Player Apple Books style =====
+// ===== Text view — texto puro, scroll, click pra tocar trecho =====
+function TextView({ docId, chunks, chunkIdx, boundaries, activeBIdx, onPlayChunk }: {
+  docId: string; chunks: Chunk[]; chunkIdx: number;
+  boundaries: Boundary[]; activeBIdx: number;
+  onPlayChunk: (idx: number) => void;
+}) {
+  return (
+    <ScrollView contentContainerStyle={styles.textWrap} showsVerticalScrollIndicator={false}>
+      {chunks.map((c) => {
+        const isActive = c.index === chunkIdx;
+        return (
+          <Pressable key={c.index} onPress={() => onPlayChunk(c.index)} style={styles.textChunk}>
+            <Text style={[
+              styles.textBody,
+              isActive && styles.textBodyActive,
+            ]}>
+              {c.text}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </ScrollView>
+  );
+}
+
+// ===== Player =====
 function Player({ coverId, chapter, page, totalPages, elapsed, total, pct, isPlaying, isLoading, onPlayPause, onSkip10, speed, onSpeedChange }: {
   coverId: string; chapter: string; page: number; totalPages: number;
   elapsed: number; total: number; pct: number;
@@ -351,17 +389,26 @@ function Player({ coverId, chapter, page, totalPages, elapsed, total, pct, isPla
   onPlayPause: () => void; onSkip10: (dir: 1 | -1) => void;
   speed: number; onSpeedChange: (s: number) => void;
 }) {
+  const [coverFailed, setCoverFailed] = useState(false);
   return (
     <View style={styles.playerWrap}>
       <View style={styles.playerPill}>
-        {/* Progress bar */}
         <View style={styles.progressBar}>
           <View style={[styles.progressFill, { width: `${pct}%` }]} />
         </View>
 
-        {/* Main row */}
         <View style={styles.mainRow}>
-          <Image source={{ uri: coverUrl(coverId) }} style={styles.cover} />
+          {coverFailed ? (
+            <View style={[styles.cover, styles.coverEmpty]}>
+              <Text style={styles.coverInitial}>e</Text>
+            </View>
+          ) : (
+            <Image
+              source={{ uri: coverUrl(coverId) }}
+              style={styles.cover}
+              onError={() => setCoverFailed(true)}
+            />
+          )}
           <View style={styles.infoCol}>
             <Text numberOfLines={1} style={styles.chapterText}>{chapter}</Text>
             <Text numberOfLines={1} style={styles.metaText}>
@@ -380,7 +427,7 @@ function Player({ coverId, chapter, page, totalPages, elapsed, total, pct, isPla
             style={({ pressed }) => [styles.playBtn, { opacity: pressed || isLoading ? 0.85 : 1 }]}
           >
             {isLoading ? (
-              <ActivityIndicator color="#0F0F12" size="small" />
+              <ActivityIndicator color={colors.ink} size="small" />
             ) : (
               <Text style={styles.playGlyph}>{isPlaying ? '⏸' : '▶'}</Text>
             )}
@@ -392,7 +439,6 @@ function Player({ coverId, chapter, page, totalPages, elapsed, total, pct, isPla
           </Pressable>
         </View>
 
-        {/* Speed */}
         <View style={styles.speedRow}>
           {[0.75, 1, 1.25, 1.5, 2].map(s => {
             const active = speed === s;
@@ -440,34 +486,57 @@ function fmt(ms: number): string {
 }
 
 const styles = StyleSheet.create({
-  fill: { flex: 1, backgroundColor: '#0F0F12' },
+  fill: { flex: 1, backgroundColor: colors.snow },
   center: { alignItems: 'center', justifyContent: 'center' },
 
   header: {
     flexDirection: 'row', alignItems: 'center',
     paddingHorizontal: 12, paddingVertical: 8,
+    backgroundColor: colors.white,
+    borderBottomWidth: 1, borderBottomColor: colors.border,
+    gap: 8,
   },
   backBtn: { padding: 8 },
-  backChevron: { color: 'white', fontSize: 22, lineHeight: 22 },
+  backChevron: { color: colors.ink, fontSize: 22, lineHeight: 22 },
   headerTitle: {
-    flex: 1, color: 'white',
+    flex: 1, color: colors.ink,
     fontSize: 14, fontWeight: '600',
-    textAlign: 'center', marginHorizontal: 12,
+    fontFamily: fonts.display,
+    letterSpacing: -0.2,
   },
-  headerPage: {
-    color: 'rgba(255,255,255,0.4)',
-    fontSize: 12, paddingHorizontal: 8,
+  viewToggle: {
+    flexDirection: 'row',
+    backgroundColor: colors.cloud,
+    borderRadius: 8, padding: 3, gap: 2,
   },
+  viewBtn: {
+    paddingHorizontal: 10, paddingVertical: 4,
+    borderRadius: 6,
+  },
+  viewBtnActive: { backgroundColor: colors.white },
+  viewBtnText: {
+    fontSize: 11, fontWeight: '600',
+    color: colors.slate,
+    letterSpacing: 0.1,
+  },
+  viewBtnTextActive: { color: colors.ink },
 
   pageWrap: { marginVertical: 4 },
   pageImg: { width: SCREEN_W, height: PAGE_HEIGHT, backgroundColor: 'white' },
 
-  playerWrap: { paddingHorizontal: 10, paddingBottom: 10 },
+  textWrap: { padding: 24, paddingBottom: 40 },
+  textChunk: { marginBottom: 18 },
+  textBody: {
+    fontSize: 16, lineHeight: 26,
+    color: colors.charcoal,
+    fontFamily: fonts.body,
+  },
+  textBodyActive: { backgroundColor: colors.highlight, color: colors.ink },
+
+  playerWrap: { paddingHorizontal: 10, paddingBottom: 10, paddingTop: 8 },
   playerPill: {
-    backgroundColor: 'rgba(20, 20, 22, 0.96)',
+    backgroundColor: colors.playerBg,
     borderRadius: 18,
-    borderWidth: 0.5,
-    borderColor: 'rgba(255,255,255,0.1)',
     overflow: 'hidden',
   },
   progressBar: { height: 3, backgroundColor: 'rgba(255,255,255,0.12)' },
@@ -479,10 +548,12 @@ const styles = StyleSheet.create({
   },
   cover: {
     width: 46, height: 46, borderRadius: 9,
-    backgroundColor: 'rgba(255,255,255,0.05)',
+    backgroundColor: colors.charcoal,
   },
+  coverEmpty: { alignItems: 'center', justifyContent: 'center' },
+  coverInitial: { color: 'white', fontSize: 22, fontWeight: '900', fontFamily: fonts.display },
   infoCol: { flex: 1, minWidth: 0, gap: 3 },
-  chapterText: { color: 'white', fontSize: 13, fontWeight: '700', letterSpacing: -0.1 },
+  chapterText: { color: 'white', fontSize: 13, fontWeight: '700', letterSpacing: -0.1, fontFamily: fonts.display },
   metaText: { color: 'rgba(255,255,255,0.55)', fontSize: 11 },
 
   skipBtn: {
@@ -502,7 +573,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'white',
     alignItems: 'center', justifyContent: 'center',
   },
-  playGlyph: { color: '#0F0F12', fontSize: 16, fontWeight: '900' },
+  playGlyph: { color: colors.ink, fontSize: 16, fontWeight: '900' },
 
   speedRow: {
     flexDirection: 'row',
