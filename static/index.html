@@ -256,7 +256,17 @@
         .pp-skip:hover { background: rgba(255,255,255,0.1); }
         .pp-skip:active { transform: scale(0.92); }
         .pp-skip svg { width: 22px; height: 22px; }
-        .pp-skip-num { position: absolute; font-size: 8.5px; font-weight: 700; font-family: var(--font-b); letter-spacing: -0.3px; }
+        .pp-skip-num {
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 9px; font-weight: 800;
+            font-family: var(--font-b);
+            letter-spacing: -0.5px;
+            line-height: 1;
+            pointer-events: none;
+            color: inherit;
+        }
 
         .play-btn {
             width: 46px; height: 46px;
@@ -508,7 +518,7 @@
                 <div class="pp-controls">
                     <button class="pp-skip" onclick="skipBack()" title="Voltar 10s" aria-label="Voltar 10 segundos">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 4v6h6"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
-                        <span class="pp-skip-num" style="top:11px;left:8px">10</span>
+                        <span class="pp-skip-num">10</span>
                     </button>
                     <button class="play-btn" id="playBtn" onclick="togglePlay()" aria-label="Tocar/Pausar">
                         <svg id="playIcon" viewBox="0 0 24 24" fill="currentColor"><polygon points="8 5 20 12 8 19 8 5"/></svg>
@@ -516,7 +526,7 @@
                     </button>
                     <button class="pp-skip" onclick="skipForward()" title="Avancar 10s" aria-label="Avançar 10 segundos">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-                        <span class="pp-skip-num" style="top:11px;right:8px">10</span>
+                        <span class="pp-skip-num">10</span>
                     </button>
                 </div>
             </div>
@@ -873,7 +883,7 @@ async function openDocument(docId) {
         if (!r.ok) throw new Error('Documento não encontrado');
         const d = await r.json();
         currentDoc = d.document; currentChunks = d.chunks; currentChunkIndex = d.progress?.current_chunk||0;
-        prefetchCache = {}; renderedPages = {}; pageWordPositions = {}; chunkTextCache = {};
+        prefetchCache = {}; renderedPages = {}; pageWordPositions = {}; chunkTextCache = {}; chunkDurations = {};
 
         document.getElementById('readerTitle').textContent = currentDoc.title;
         document.getElementById('totalPages').textContent = currentDoc.total_pages;
