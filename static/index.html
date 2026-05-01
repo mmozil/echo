@@ -1737,27 +1737,41 @@ async function handleTextLayerClick(pageNum, clickedSpan, textLayerDiv) {
         let seekTimeSec = 0;
         if (wordBoundaries.length > 0) {
             const chunkText = data.text || await getChunkFullText(currentChunkIndex);
+
+            // Match no texto NORMALIZADO (sem pontuação) — robusto a aspas/hífens
             const chunkNorm = normalize(chunkText);
             const clickNorm = normalize(clickedText.split(/\s+/).slice(0, 8).join(' '));
-
-            let charPos = chunkNorm.indexOf(clickNorm);
-            if (charPos < 0) {
-                // Fallback: tentar frase mais curta
+            let charPosNorm = chunkNorm.indexOf(clickNorm);
+            if (charPosNorm < 0) {
                 const shortNorm = normalize(clickedText.split(/\s+/).slice(0, 3).join(' '));
-                charPos = chunkNorm.indexOf(shortNorm);
+                charPosNorm = chunkNorm.indexOf(shortNorm);
             }
 
-            if (charPos >= 0) {
-                // Voltar até o início da frase: último .!? antes do click + skip whitespace
+            if (charPosNorm >= 0) {
+                // Quantas palavras antes do click no chunk normalizado
+                const wordsBeforeClick = chunkNorm.substring(0, charPosNorm).split(' ').filter(w => w).length;
+
+                // Mapear N palavras para posição no chunkText ORIGINAL (com pontuação)
+                let chunkWordCount = 0, charPosOrig = chunkText.length;
+                const wordRe = /\S+/g;
+                let m;
+                while ((m = wordRe.exec(chunkText)) !== null) {
+                    if (chunkWordCount === wordsBeforeClick) { charPosOrig = m.index; break; }
+                    chunkWordCount++;
+                }
+
+                // Voltar até o último .!? ANTES de charPosOrig no texto original
                 let sentStartChar = 0;
-                for (let i = charPos - 1; i >= 0; i--) {
-                    const ch = chunkNorm[i];
+                for (let i = charPosOrig - 1; i >= 0; i--) {
+                    const ch = chunkText[i];
                     if (ch === '.' || ch === '!' || ch === '?') { sentStartChar = i + 1; break; }
                 }
-                while (sentStartChar < charPos && /\s/.test(chunkNorm[sentStartChar])) sentStartChar++;
+                // Pular espaços, quebras e aspas iniciais
+                while (sentStartChar < charPosOrig && /[\s"'“”\-—]/.test(chunkText[sentStartChar])) sentStartChar++;
 
-                const wordsBefore = chunkNorm.substring(0, sentStartChar).split(' ').filter(w => w).length;
-                const bIdx = Math.min(wordsBefore, wordBoundaries.length - 1);
+                // Contar palavras antes do início da frase
+                const wordsBeforeSent = (chunkText.substring(0, sentStartChar).match(/\S+/g) || []).length;
+                const bIdx = Math.min(wordsBeforeSent, wordBoundaries.length - 1);
                 seekTimeSec = (wordBoundaries[bIdx]?.offset_ms || 0) / 1000;
             }
         }
