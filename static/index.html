@@ -147,8 +147,11 @@
         .pdf-text-layer span:hover { background: rgba(37,99,235,0.12); border-radius: 2px; }
         .pdf-text-layer span.playing { background: rgba(37,99,235,0.35); border-radius: 2px; }
 
-        /* Highlight overlay no PDF */
-        .pdf-highlight { position: absolute; background: rgba(37,99,235,0.45); pointer-events: none; border-radius: 2px; z-index: 2; }
+        /* Highlight overlay no PDF — marca-texto contínuo por linha (estilo Speechify) */
+        .pdf-highlight { position: absolute; background: rgba(250, 204, 21, 0.42); pointer-events: none; border-radius: 3px; z-index: 2; transition: left 140ms cubic-bezier(.4,0,.2,1), top 140ms cubic-bezier(.4,0,.2,1), width 140ms cubic-bezier(.4,0,.2,1), height 140ms cubic-bezier(.4,0,.2,1), opacity 120ms; will-change: left, top, width, height; mix-blend-mode: multiply; }
+        [data-theme="dark"] .pdf-highlight { background: rgba(255, 215, 80, 0.28); mix-blend-mode: screen; }
+        .pdf-highlight.current-word { background: rgba(249, 115, 22, 0.55); z-index: 3; }
+        [data-theme="dark"] .pdf-highlight.current-word { background: rgba(255, 159, 67, 0.45); }
         .pdf-hover-line { position: absolute; left: 0; right: 0; background: rgba(37,99,235,0.15); pointer-events: none; z-index: 1; transition: all 0.1s; }
 
         /* Search highlight no PDF */
@@ -174,14 +177,15 @@
         .pp-progress:hover { height: 3px; }
         .pfill { height: 100%; background: white; transition: width 0.1s linear; }
 
-        .pp-row1 { display: flex; align-items: center; padding: 8px 16px 2px; gap: 8px; }
-        .pp-time { font-size: 11px; font-family: var(--font-m); color: rgba(255,255,255,0.45); white-space: nowrap; min-width: 44px; }
+        .pp-row1 { display: flex; align-items: center; padding: 10px 16px 4px; gap: 10px; }
+        .pp-time { font-size: 12px; font-family: var(--font-m); font-variant-numeric: tabular-nums; color: rgba(255,255,255,0.62); white-space: nowrap; min-width: 48px; line-height: 1; letter-spacing: 0.2px; }
         .pp-time.r { text-align: right; }
-        .pp-chapter { flex: 1; display: flex; align-items: center; justify-content: center; gap: 4px; font-size: 12px; font-weight: 500; color: rgba(255,255,255,0.8); cursor: pointer; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+        .pp-chapter { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px; font-size: 13px; font-weight: 500; color: rgba(255,255,255,0.92); cursor: pointer; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; line-height: 1; }
         .pp-chapter:hover { color: white; }
-        .pp-chapter svg { width: 12px; height: 12px; flex-shrink: 0; opacity: 0.5; }
+        .pp-chapter svg { width: 12px; height: 12px; flex-shrink: 0; opacity: 0.55; }
+        .pp-chapter-meta { font-size: 11px; font-weight: 400; color: rgba(255,255,255,0.5); margin-left: 6px; font-variant-numeric: tabular-nums; }
 
-        .pp-row2 { display: flex; align-items: center; justify-content: center; padding: 4px 16px 10px; gap: 16px; }
+        .pp-row2 { display: flex; align-items: center; justify-content: center; padding: 6px 16px 12px; gap: 16px; }
 
         .pp-voice { width: 28px; height: 28px; border-radius: 50%; border: none; background: transparent; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 18px; padding: 0; }
         .pp-voice:hover { background: rgba(255,255,255,0.1); }
@@ -936,6 +940,8 @@ async function playCurrentChunk() {
     if (!currentDoc) return;
     stopHighlightLoop();
     lastPdfHighlightIdx = -1; // Reset highlight tracking
+    // Limpar overlays de páginas anteriores (transição entre chunks/páginas)
+    document.querySelectorAll('.pdf-highlight').forEach(h => h.remove());
     showPlayLoading(true);
     try {
         let data;
@@ -1121,9 +1127,27 @@ audio.addEventListener('timeupdate', () => {
     }
 });
 
-audio.addEventListener('ended', () => {
+audio.addEventListener('ended', async () => {
     stopHighlightLoop();
-    if(currentChunkIndex<currentChunks.length-1) nextChunk(); else { isPlaying=false; updatePlayButton(); showToast('Leitura concluida!'); resetPlayerIdle(); }
+    // Limpar overlays do chunk anterior antes de avançar
+    document.querySelectorAll('.pdf-highlight').forEach(h => h.remove());
+    lastPdfHighlightIdx = -1;
+    if (currentChunkIndex < currentChunks.length - 1) {
+        currentChunkIndex++;
+        isPlaying = true; // garantir intenção de continuar tocando
+        updateUI();
+        try {
+            await playCurrentChunk();
+        } catch (e) {
+            console.error('[echo] auto-advance falhou:', e);
+            isPlaying = false; updatePlayButton();
+            showToast('Toque play para continuar');
+        }
+    } else {
+        isPlaying = false; updatePlayButton();
+        showToast('Leitura concluída!');
+        resetPlayerIdle();
+    }
 });
 
 function seekAudio(e) { if(!audio.duration || !isFinite(audio.duration)) return; const b=document.getElementById('pBar'),r=b.getBoundingClientRect(); audio.currentTime=((e.clientX-r.left)/r.width)*audio.duration; }
@@ -1149,13 +1173,18 @@ function updateChapterDisplay() {
     const chunk = currentChunks[currentChunkIndex];
     if (!chunk) return;
     const page = chunk.page;
-    let chapterName = `Trecho ${currentChunkIndex + 1} de ${currentChunks.length}`;
+    let chapterName = null;
     if (tocData.length) {
         for (let i = tocData.length - 1; i >= 0; i--) {
             if (tocData[i].page <= page) { chapterName = tocData[i].title; break; }
         }
     }
-    el.textContent = chapterName;
+    const meta = `${currentChunkIndex + 1}/${currentChunks.length} · pág ${page}`;
+    if (chapterName) {
+        el.innerHTML = `<span>${chapterName}</span><span class="pp-chapter-meta">${meta}</span>`;
+    } else {
+        el.innerHTML = `<span>Trecho ${meta}</span>`;
+    }
 }
 
 async function nextChunk() { if(currentChunkIndex<currentChunks.length-1){currentChunkIndex++;updateUI();if(isPlaying) await playCurrentChunk();} }
@@ -1323,54 +1352,82 @@ async function loadPageWords(pageNum) {
 let pdfHighlightWordCounter = 0; // conta quantas palavras ja foram faladas nesta sessao
 
 function highlightWordOnPdf(boundaryIdx, pageNum) {
-    document.querySelectorAll('.pdf-highlight').forEach(h => h.remove());
     const pageEl = document.getElementById(`pdf-page-${pageNum}`);
     if (!pageEl) return;
 
     const words = pageWordPositions[pageNum];
     if (!words || !words.length) return;
 
-    // Mapear boundary -> palavra na pagina por posicao proporcional
+    // Localizar palavra ativa na página por sequência (mais robusto que ratio puro)
+    const norm = (s) => (s || '').toLowerCase().replace(/[.,;:!?"'()\[\] ]/g, '').trim();
+    const bText = norm(wordBoundaries[boundaryIdx]?.text);
     const ratio = wordBoundaries.length > 0 ? boundaryIdx / wordBoundaries.length : 0;
     const targetWordIdx = Math.min(Math.floor(ratio * words.length), words.length - 1);
 
-    // Buscar match exato proximo ao targetWordIdx
-    const bText = wordBoundaries[boundaryIdx]?.text?.toLowerCase().replace(/[.,;:!?"'()\[\]]/g, '') || '';
-    let bestIdx = targetWordIdx;
-    let bestDist = Infinity;
-    for (let i = Math.max(0, targetWordIdx - 15); i < Math.min(words.length, targetWordIdx + 15); i++) {
-        const wText = words[i].word.toLowerCase().replace(/[.,;:!?"'()\[\]]/g, '');
-        if (wText === bText || wText.startsWith(bText) || bText.startsWith(wText)) {
+    // Ampliar raio de busca para chunks com muitas palavras
+    const RADIUS = Math.max(20, Math.floor(words.length * 0.15));
+    let bestIdx = targetWordIdx, bestDist = Infinity;
+    for (let i = Math.max(0, targetWordIdx - RADIUS); i < Math.min(words.length, targetWordIdx + RADIUS); i++) {
+        const wText = norm(words[i].word);
+        if (!wText || !bText) continue;
+        if (wText === bText || (bText.length >= 3 && (wText.startsWith(bText) || bText.startsWith(wText)))) {
             const dist = Math.abs(i - targetWordIdx);
             if (dist < bestDist) { bestDist = dist; bestIdx = i; }
         }
     }
-
     if (!words[bestIdx]) return;
 
-    // Encontrar limites da frase (até ponto anterior e próximo ponto)
+    // Limites da frase (parada em pontuação forte: . ! ? ;)
+    const STOP = /[.!?;]$/;
     let sentStart = bestIdx, sentEnd = bestIdx;
     for (let i = bestIdx - 1; i >= 0; i--) {
-        if (/[.!?;:]$/.test(words[i].word)) break;
+        if (STOP.test(words[i].word)) break;
         sentStart = i;
     }
     for (let i = bestIdx; i < words.length; i++) {
         sentEnd = i;
-        if (/[.!?;:]$/.test(words[i].word)) break;
+        if (STOP.test(words[i].word)) break;
     }
 
-    // Highlight de todas as palavras da frase
+    // Agrupar palavras da frase em LINHAS (mesma y0 com tolerância)
+    const Y_TOL = 0.006; // 0.6% da altura da página
+    const lines = []; // {x0,y0,x1,y1,start,end}
     for (let i = sentStart; i <= sentEnd; i++) {
-        const lw = words[i];
-        if (!lw) continue;
-        const overlay = document.createElement('div');
-        overlay.className = 'pdf-highlight';
-        overlay.style.left = (lw.x0 * 100) + '%';
-        overlay.style.top = (lw.y0 * 100) + '%';
-        overlay.style.width = ((lw.x1 - lw.x0) * 100) + '%';
-        overlay.style.height = ((lw.y1 - lw.y0) * 100) + '%';
-        pageEl.appendChild(overlay);
+        const w = words[i];
+        if (!w) continue;
+        const last = lines[lines.length - 1];
+        if (last && Math.abs(w.y0 - last.y0Ref) < Y_TOL) {
+            last.x0 = Math.min(last.x0, w.x0);
+            last.x1 = Math.max(last.x1, w.x1);
+            last.y0 = Math.min(last.y0, w.y0);
+            last.y1 = Math.max(last.y1, w.y1);
+            last.end = i;
+        } else {
+            lines.push({ x0: w.x0, y0: w.y0, x1: w.x1, y1: w.y1, y0Ref: w.y0, start: i, end: i });
+        }
     }
+    if (!lines.length) return;
+
+    // Reaproveitar overlays existentes (transição suave em vez de remove/recreate)
+    const existing = Array.from(pageEl.querySelectorAll('.pdf-highlight'));
+    const padX = 0.002, padY = 0.0015;
+
+    lines.forEach((ln, idx) => {
+        let overlay = existing[idx];
+        if (!overlay) {
+            overlay = document.createElement('div');
+            overlay.className = 'pdf-highlight';
+            pageEl.appendChild(overlay);
+        }
+        overlay.style.left = ((ln.x0 - padX) * 100) + '%';
+        overlay.style.top = ((ln.y0 - padY) * 100) + '%';
+        overlay.style.width = ((ln.x1 - ln.x0 + 2 * padX) * 100) + '%';
+        overlay.style.height = ((ln.y1 - ln.y0 + 2 * padY) * 100) + '%';
+        overlay.style.opacity = '1';
+    });
+
+    // Remover overlays excedentes (frase anterior era maior)
+    for (let i = lines.length; i < existing.length; i++) existing[i].remove();
 }
 
 let lastPdfHighlightIdx = -1;
