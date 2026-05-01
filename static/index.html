@@ -1661,13 +1661,13 @@ async function findCorrectChunk(pageNum, clickedWords) {
 // Encontra boundary por sequencia de palavras (sliding window nos boundaries)
 // Este e o metodo principal — busca as palavras clicadas direto nos boundaries do TTS
 function findBoundaryByWordSequence(clickedWords) {
-    if (!wordBoundaries.length) return 0;
+    if (!wordBoundaries.length) return -1;
 
     // Manter TODAS as palavras (inclusive curtas como "a", "e", "o")
     const context = clickedWords.map(w => clean(w)).filter(w => w).slice(0, 10);
-    if (context.length < 2) return 0;
+    if (context.length < 1) return -1;
 
-    let bestScore = 0, bestIdx = 0;
+    let bestScore = 0, bestIdx = -1;
     for (let bi = 0; bi < wordBoundaries.length; bi++) {
         let score = 0;
         let bOffset = 0;
@@ -1759,32 +1759,17 @@ async function handleTextLayerClick(pageNum, clickedSpan, textLayerDiv) {
         await new Promise(r => requestAnimationFrame(r));
         buildBoundaryMap();
 
-        // 8) Localizar contexto no chunk → contar palavras antes → seek na boundary
+        // 8) Match direto no TEXTO dos boundaries do TTS (sequence match)
+        // — bem mais confiável que contar palavras + indexar, porque Edge TTS
+        // pode pular palavras curtas, juntar números, etc.
         let seekTimeSec = 0;
         if (wordBoundaries.length > 0) {
-            const chunkText = data.text || await getChunkFullText(currentChunkIndex);
-            const chunkNorm = normalize(chunkText);
-            const ctxNorm = normalize(contextText);
-
-            let charPos = chunkNorm.indexOf(ctxNorm);
-            if (charPos < 0) {
-                // Fallback: contexto curto (4 palavras)
-                const shortNorm = normalize(contextWords.slice(0, 4).join(' '));
-                charPos = chunkNorm.indexOf(shortNorm);
-            }
-            if (charPos < 0) {
-                // Fallback final: 2 palavras
-                const tinyNorm = normalize(contextWords.slice(0, 2).join(' '));
-                charPos = chunkNorm.indexOf(tinyNorm);
-            }
-
-            if (charPos >= 0) {
-                const wordsBefore = chunkNorm.substring(0, charPos).split(' ').filter(w => w).length;
-                const bIdx = Math.min(wordsBefore, wordBoundaries.length - 1);
-                seekTimeSec = (wordBoundaries[bIdx]?.offset_ms || 0) / 1000;
-                console.log('[click] seek =', seekTimeSec.toFixed(2), 's | palavras antes:', wordsBefore);
+            const bIdx = findBoundaryByWordSequence(contextWords);
+            if (bIdx >= 0 && wordBoundaries[bIdx]) {
+                seekTimeSec = wordBoundaries[bIdx].offset_ms / 1000;
+                console.log('[click] boundary idx', bIdx, '@', seekTimeSec.toFixed(2) + 's text:', wordBoundaries[bIdx].text);
             } else {
-                console.warn('[click] contexto não localizado no chunk');
+                console.warn('[click] sequência não encontrada nos boundaries');
             }
         }
 
