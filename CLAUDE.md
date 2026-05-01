@@ -4,20 +4,39 @@
 
 Echo é um leitor de documentos com voz AI. Upload de PDFs → extração de texto → TTS com Microsoft Edge (pt-BR-AntonioNeural). Speechify pessoal, gratuito.
 
-**URL:** https://echo.hovio.com.br
+**URLs:**
+- Web: https://echo.hovio.com.br
+- API: https://echo.hovio.com.br (mesma origem)
+- Mobile: app nativo iOS + Android em `mobile/` (Expo SDK 54)
+
 **Repo:** github.com/mmozil/echo
-**Stack:** Python 3.13, FastAPI, Edge TTS, PyMuPDF, PDF.js, SQLite
+**Stack:** Python 3.13, FastAPI, Edge TTS, PyMuPDF, PDF.js (web), React Native (mobile), SQLite
 
 ## Comandos
 
 ```bash
-# Dev local
+# Backend dev
 pip install -r requirements.txt
 DB_PATH=./data/echo.db UPLOAD_DIR=./data/uploads AUDIO_DIR=./data/audio uvicorn main:app --reload --port 8095
 
 # Docker (produção usa docker-compose)
 docker compose up --build
+
+# Mobile (Expo)
+cd mobile
+npm install
+npx expo start --lan       # Expo Go scanea QR
 ```
+
+## Mobile (`mobile/`)
+
+App nativo React Native + Expo SDK 54, mesmo backend. Compartilha login/progresso com a versão web automaticamente via JWT em SecureStore + `PUT /api/documents/{id}/progress`.
+
+- **Estrutura:** Expo Router (file-based) — `app/_layout.tsx`, `app/login.tsx`, `app/index.tsx` (library), `app/reader/[id].tsx`
+- **Áudio:** `expo-av` baseline; roadmap: `react-native-track-player` (background + lockscreen controls)
+- **Highlights:** `react-native-svg` com mesma técnica de path do web (1 path com sub-paths round-rect por linha da frase)
+- **PDF rendering:** PNG do servidor (`/api/documents/{id}/pages/{p}.png`) — sem PDF.js no mobile, mesma estratégia do fallback web
+- **Sync:** progresso salva em cada chunk transition; web detecta no foco da aba via `GET /api/documents/{id}`
 
 ## Arquitetura
 
