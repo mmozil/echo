@@ -55,6 +55,7 @@ export default function Reader() {
   const [speed, setSpeed] = useState(1);
 
   const soundRef = useRef<Audio.Sound | null>(null);
+  const soundChunkIdxRef = useRef(-1); // qual chunk está em soundRef.current
   const flatRef = useRef<FlatList<number>>(null);
   const chunkDur = useRef<Record<number, number>>({});
   const userScrollingRef = useRef(false);
@@ -109,14 +110,27 @@ export default function Reader() {
   // Toca chunk com proteção anti-overlap
   const playChunk = useCallback(async (idx: number, seekToMs = 0) => {
     if (!data) return;
+
+    // FAST PATH: mesmo chunk já carregado → só seek (sem reload)
+    if (soundRef.current && soundChunkIdxRef.current === idx) {
+      try {
+        await soundRef.current.setPositionAsync(seekToMs);
+        await soundRef.current.playAsync();
+        saveProgress(docId, idx, seekToMs).catch(() => {});
+        return;
+      } catch (e) {
+        console.warn('[playChunk] fast-path falhou, fazendo full reload:', e);
+      }
+    }
+
     const seq = ++playSeqRef.current;
     setIsLoadingAudio(true);
     try {
-      // Para qualquer áudio anterior PRIMEIRO (sincronamente)
       const prev = soundRef.current;
       soundRef.current = null;
+      soundChunkIdxRef.current = -1;
       if (prev) await prev.unloadAsync().catch(() => {});
-      if (seq !== playSeqRef.current) return; // outro play sobrescreveu
+      if (seq !== playSeqRef.current) return;
 
       const audio = await getChunkAudio(docId, idx);
       if (seq !== playSeqRef.current) return;
@@ -141,12 +155,12 @@ export default function Reader() {
           }
         }
       );
-      // Se outro play começou enquanto carregávamos, descartar este
       if (seq !== playSeqRef.current) {
         sound.unloadAsync().catch(() => {});
         return;
       }
       soundRef.current = sound;
+      soundChunkIdxRef.current = idx;
       setChunkIdx(idx);
       saveProgress(docId, idx, seekToMs).catch(() => {});
     } catch (e: any) {
@@ -360,17 +374,20 @@ const PdfPage = memo(function PdfPage({ docId, page, words, isActive, boundaries
       onPress={(e) => {
         const relX = e.nativeEvent.locationX / SCREEN_W;
         const relY = e.nativeEvent.locationY / PAGE_HEIGHT;
+        console.log('[tap] page', page, 'relX:', relX.toFixed(3), 'relY:', relY.toFixed(3));
         onPress(relX, relY);
       }}
       style={styles.pageWrap}
     >
-      <Image
-        source={pageImageUrl(docId, page)}
-        style={styles.pageImg}
-        contentFit="fill"
-        transition={150}
-        cachePolicy="memory-disk"
-      />
+      <View pointerEvents="none">
+        <Image
+          source={pageImageUrl(docId, page)}
+          style={styles.pageImg}
+          contentFit="fill"
+          transition={150}
+          cachePolicy="memory-disk"
+        />
+      </View>
       {pathD ? (
         <Svg
           width={SCREEN_W} height={PAGE_HEIGHT}
