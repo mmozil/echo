@@ -3,10 +3,11 @@ import {
   View, Text, Pressable, ActivityIndicator, Image, FlatList, ScrollView,
   Dimensions, Alert, StyleSheet,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, router } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { Audio, AVPlaybackStatus } from 'expo-av';
+import { BlurView } from 'expo-blur';
 import Svg, { Path } from 'react-native-svg';
 import {
   getDocument, getChunkAudio, getPageWords, saveProgress,
@@ -21,6 +22,8 @@ import { colors, fonts } from '@/lib/theme';
 const SCREEN_W = Dimensions.get('window').width;
 const PAGE_RATIO = 0.71;
 const PAGE_HEIGHT = SCREEN_W / PAGE_RATIO;
+// altura aproximada do player (3 + 11+46+11 + 8+28+11 = ~118)
+const PLAYER_H = 118;
 
 type Boundary = { offset_ms: number; duration_ms: number; text: string };
 type ViewMode = 'pdf' | 'text';
@@ -32,6 +35,8 @@ const clamp = (n: number, min: number, max: number) => Math.max(min, Math.min(ma
 export default function Reader() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const docId = String(id);
+  const insets = useSafeAreaInsets();
+  const bottomPad = PLAYER_H + insets.bottom + 16;
 
   const { data, isLoading } = useQuery({
     queryKey: ['document', docId],
@@ -259,6 +264,7 @@ export default function Reader() {
           data={Array.from({ length: doc.total_pages }, (_, i) => i + 1)}
           keyExtractor={(p) => String(p)}
           showsVerticalScrollIndicator={false}
+          contentContainerStyle={{ paddingBottom: bottomPad }}
           getItemLayout={(_, i) => ({ length: PAGE_HEIGHT + 8, offset: (PAGE_HEIGHT + 8) * i, index: i })}
           onScrollBeginDrag={() => {
             userScrollingRef.current = true;
@@ -288,27 +294,31 @@ export default function Reader() {
           boundaries={boundaries}
           activeBIdx={activeBIdx}
           onPlayChunk={(i) => playChunk(i, 0)}
+          bottomPadding={bottomPad}
         />
       )}
 
-      <Player
-        coverId={doc.id}
-        chapter={`Trecho ${chunkIdx + 1}/${data.chunks.length}`}
-        page={chunk?.page || 1}
-        totalPages={doc.total_pages}
-        elapsed={elapsed / speed}
-        total={total / speed}
-        pct={pct}
-        isPlaying={isPlaying}
-        isLoading={isLoadingAudio}
-        onPlayPause={togglePlay}
-        onSkip10={skip10}
-        speed={speed}
-        onSpeedChange={(s) => {
-          setSpeed(s);
-          soundRef.current?.setRateAsync(s, true).catch(() => {});
-        }}
-      />
+      {/* Player flutuante (BlurView absolute bottom) */}
+      <View style={[styles.playerFloat, { paddingBottom: insets.bottom + 8 }]} pointerEvents="box-none">
+        <Player
+          coverId={doc.id}
+          chapter={`Trecho ${chunkIdx + 1}/${data.chunks.length}`}
+          page={chunk?.page || 1}
+          totalPages={doc.total_pages}
+          elapsed={elapsed / speed}
+          total={total / speed}
+          pct={pct}
+          isPlaying={isPlaying}
+          isLoading={isLoadingAudio}
+          onPlayPause={togglePlay}
+          onSkip10={skip10}
+          speed={speed}
+          onSpeedChange={(s) => {
+            setSpeed(s);
+            soundRef.current?.setRateAsync(s, true).catch(() => {});
+          }}
+        />
+      </View>
     </SafeAreaView>
   );
 }
@@ -357,13 +367,14 @@ const PdfPage = memo(function PdfPage({ docId, page, words, isActive, boundaries
 });
 
 // ===== Text view — texto puro, scroll, click pra tocar trecho =====
-function TextView({ docId, chunks, chunkIdx, boundaries, activeBIdx, onPlayChunk }: {
+function TextView({ docId, chunks, chunkIdx, boundaries, activeBIdx, onPlayChunk, bottomPadding }: {
   docId: string; chunks: Chunk[]; chunkIdx: number;
   boundaries: Boundary[]; activeBIdx: number;
   onPlayChunk: (idx: number) => void;
+  bottomPadding: number;
 }) {
   return (
-    <ScrollView contentContainerStyle={styles.textWrap} showsVerticalScrollIndicator={false}>
+    <ScrollView contentContainerStyle={[styles.textWrap, { paddingBottom: bottomPadding }]} showsVerticalScrollIndicator={false}>
       {chunks.map((c) => {
         const isActive = c.index === chunkIdx;
         return (
@@ -391,8 +402,7 @@ function Player({ coverId, chapter, page, totalPages, elapsed, total, pct, isPla
 }) {
   const [coverFailed, setCoverFailed] = useState(false);
   return (
-    <View style={styles.playerWrap}>
-      <View style={styles.playerPill}>
+    <BlurView intensity={45} tint="dark" style={styles.playerPill}>
         <View style={styles.progressBar}>
           <View style={[styles.progressFill, { width: `${pct}%` }]} />
         </View>
@@ -453,8 +463,7 @@ function Player({ coverId, chapter, page, totalPages, elapsed, total, pct, isPla
             );
           })}
         </View>
-      </View>
-    </View>
+    </BlurView>
   );
 }
 
@@ -533,11 +542,23 @@ const styles = StyleSheet.create({
   },
   textBodyActive: { backgroundColor: colors.highlight, color: colors.ink },
 
-  playerWrap: { paddingHorizontal: 10, paddingBottom: 10, paddingTop: 8 },
+  playerFloat: {
+    position: 'absolute',
+    left: 0, right: 0, bottom: 0,
+    paddingHorizontal: 10, paddingTop: 8,
+  },
+  playerWrap: { paddingHorizontal: 0 }, // legado, não usado mais
   playerPill: {
-    backgroundColor: colors.playerBg,
-    borderRadius: 18,
+    backgroundColor: 'rgba(20, 20, 22, 0.72)', // BlurView complementa
+    borderRadius: 20,
     overflow: 'hidden',
+    borderWidth: 0.5,
+    borderColor: 'rgba(255,255,255,0.1)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.25,
+    shadowRadius: 20,
+    elevation: 12,
   },
   progressBar: { height: 3, backgroundColor: 'rgba(255,255,255,0.12)' },
   progressFill: { height: '100%', backgroundColor: '#8C9CFF' },
