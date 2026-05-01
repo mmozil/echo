@@ -141,18 +141,18 @@
         .pdf-page canvas { width: 100%; display: block; border-radius: 4px; }
         .pdf-page-num { text-align: center; font-size: 11px; color: var(--mist); padding: 6px 0 16px; }
 
-        /* Text layer do PDF.js — spans invisiveis sobre o canvas, clicaveis */
-        .pdf-text-layer { position: absolute; inset: 0; overflow: hidden; line-height: 1; z-index: 5; }
-        .pdf-text-layer span { position: absolute; color: transparent; white-space: pre; cursor: pointer; transition: background 0.1s; }
-        .pdf-text-layer span:hover { background: rgba(37,99,235,0.12); border-radius: 2px; }
-        .pdf-text-layer span.playing { background: rgba(37,99,235,0.35); border-radius: 2px; }
+        /* Text layer do PDF.js — spans invisiveis sobre o canvas, clicaveis (sem hover individual) */
+        .pdf-text-layer { position: absolute; inset: 0; overflow: hidden; line-height: 1; z-index: 6; }
+        .pdf-text-layer span { position: absolute; color: transparent; white-space: pre; cursor: pointer; }
 
         /* Highlight overlay no PDF — SVG path com cantos arredondados (estilo Speechify) */
         .pdf-hl-svg { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 5; mix-blend-mode: multiply; pointer-events: none; }
         .pdf-hl-svg path { transition: d 180ms cubic-bezier(.4,0,.2,1), opacity 140ms; }
+        .pdf-hl-hover    { fill: rgba(232, 234, 240, 0.85); }   /* cinza claro — hover (estilo Speechify) */
         .pdf-hl-sentence { fill: #E0E3FF; }   /* lavender claro — frase atual */
         .pdf-hl-word     { fill: #ABB3FE; }   /* lavender forte — palavra atual */
         [data-theme="dark"] .pdf-hl-svg { mix-blend-mode: screen; }
+        [data-theme="dark"] .pdf-hl-hover    { fill: rgba(80, 84, 96, 0.6); }
         [data-theme="dark"] .pdf-hl-sentence { fill: #4A5478; }
         [data-theme="dark"] .pdf-hl-word     { fill: #7B86C9; }
         .pdf-hover-line { position: absolute; left: 0; right: 0; background: rgba(37,99,235,0.15); pointer-events: none; z-index: 1; transition: all 0.1s; }
@@ -754,7 +754,7 @@ async function loadPdfDocument() {
         // Create page containers
         let html = '';
         for (let p = 1; p <= pdfDoc.numPages; p++) {
-            html += `<div class="pdf-page" id="pdf-page-${p}" data-page="${p}"><canvas id="pdf-canvas-${p}"></canvas><svg class="pdf-hl-svg" preserveAspectRatio="none" viewBox="0 0 1000 1000"><path class="pdf-hl-sentence" d=""/><path class="pdf-hl-word" d=""/></svg></div><div class="pdf-page-num">Pagina ${p} de ${pdfDoc.numPages}</div>`;
+            html += `<div class="pdf-page" id="pdf-page-${p}" data-page="${p}"><canvas id="pdf-canvas-${p}"></canvas><svg class="pdf-hl-svg" preserveAspectRatio="none" viewBox="0 0 1000 1000"><path class="pdf-hl-hover" d=""/><path class="pdf-hl-sentence" d=""/><path class="pdf-hl-word" d=""/></svg></div><div class="pdf-page-num">Pagina ${p} de ${pdfDoc.numPages}</div>`;
         }
         pv.innerHTML = html;
 
@@ -868,6 +868,14 @@ async function renderPdfPage(pageNum) {
             handleTextLayerClick(pageNum, span, textLayerDiv);
         });
 
+        // Hover SVG (estilo Speechify): pinta a frase inteira em cinza
+        textLayerDiv.addEventListener('mousemove', (e) => {
+            const span = e.target.closest('span');
+            if (!span || !span.dataset.text) { clearHoverHighlight(pageNum); return; }
+            paintHoverSentence(pageNum, span, textLayerDiv);
+        });
+        textLayerDiv.addEventListener('mouseleave', () => clearHoverHighlight(pageNum));
+
     } catch(e) {
         console.warn(`Erro ao renderizar pagina ${pageNum}:`, e);
         renderedPages[pageNum] = false;
@@ -880,7 +888,7 @@ function loadPdfPagesFallback() {
     if (!currentDoc) return;
     let html = '';
     for (let p = 1; p <= currentDoc.total_pages; p++) {
-        html += `<div class="pdf-page" id="pdf-page-${p}" data-page="${p}"><img src="/api/documents/${currentDoc.id}/pages/${p}.png" alt="Pagina ${p}" loading="lazy" style="width:100%;display:block;border-radius:4px;pointer-events:none"><svg class="pdf-hl-svg" preserveAspectRatio="none" viewBox="0 0 1000 1000"><path class="pdf-hl-sentence" d=""/><path class="pdf-hl-word" d=""/></svg></div><div class="pdf-page-num">Pagina ${p} de ${currentDoc.total_pages}</div>`;
+        html += `<div class="pdf-page" id="pdf-page-${p}" data-page="${p}"><img src="/api/documents/${currentDoc.id}/pages/${p}.png" alt="Pagina ${p}" loading="lazy" style="width:100%;display:block;border-radius:4px;pointer-events:none"><svg class="pdf-hl-svg" preserveAspectRatio="none" viewBox="0 0 1000 1000"><path class="pdf-hl-hover" d=""/><path class="pdf-hl-sentence" d=""/><path class="pdf-hl-word" d=""/></svg></div><div class="pdf-page-num">Pagina ${p} de ${currentDoc.total_pages}</div>`;
     }
     pv.innerHTML = html;
     for (let p = 1; p <= currentDoc.total_pages; p++) {
@@ -1444,6 +1452,71 @@ function _buildD(rects, padX, padY, radius) {
         (r.y1 + padY) * 1000,
         radius
     )).join(' ');
+}
+
+// ===== HOVER HIGHLIGHT (cinza, antes do play) =====
+let _hoverState = { page: -1, sentStart: -1, sentEnd: -1 };
+
+function clearHoverHighlight(pageNum) {
+    const pageEl = document.getElementById(`pdf-page-${pageNum}`);
+    if (!pageEl) return;
+    const hoverPath = pageEl.querySelector('.pdf-hl-hover');
+    if (hoverPath) hoverPath.setAttribute('d', '');
+    _hoverState = { page: -1, sentStart: -1, sentEnd: -1 };
+}
+
+async function paintHoverSentence(pageNum, hoveredSpan, textLayerDiv) {
+    const pageEl = document.getElementById(`pdf-page-${pageNum}`);
+    if (!pageEl) return;
+    const hoverPath = pageEl.querySelector('.pdf-hl-hover');
+    if (!hoverPath) return;
+
+    // Pegar word positions da página (já cacheado via loadPageWords)
+    let words = pageWordPositions[pageNum];
+    if (!words) { words = await loadPageWords(pageNum); }
+    if (!words || !words.length) return;
+
+    // Achar a palavra hovered no array `words`: usar texto do span + posição relativa
+    const hoveredText = (hoveredSpan.dataset.text || '').toLowerCase().trim();
+    if (!hoveredText) return;
+
+    // Posição relativa do span no PDF (0-1)
+    const layerRect = textLayerDiv.getBoundingClientRect();
+    const spanRect = hoveredSpan.getBoundingClientRect();
+    const xMid = (spanRect.left + spanRect.right) / 2 - layerRect.left;
+    const yMid = (spanRect.top + spanRect.bottom) / 2 - layerRect.top;
+    const relX = xMid / layerRect.width;
+    const relY = yMid / layerRect.height;
+
+    // Achar palavra mais próxima por proximidade espacial
+    let bestIdx = -1, bestDist = Infinity;
+    for (let i = 0; i < words.length; i++) {
+        const w = words[i];
+        const wxm = (w.x0 + w.x1) / 2, wym = (w.y0 + w.y1) / 2;
+        const dx = wxm - relX, dy = (wym - relY) * 2; // pesa Y mais (linhas)
+        const dist = dx*dx + dy*dy;
+        if (dist < bestDist) { bestDist = dist; bestIdx = i; }
+    }
+    if (bestIdx < 0) return;
+
+    // Limites da frase
+    const STOP = /[.!?;]$/;
+    let sentStart = bestIdx, sentEnd = bestIdx;
+    for (let i = bestIdx - 1; i >= 0; i--) {
+        if (STOP.test(words[i].word)) break;
+        sentStart = i;
+    }
+    for (let i = bestIdx; i < words.length; i++) {
+        sentEnd = i;
+        if (STOP.test(words[i].word)) break;
+    }
+
+    // Evitar re-renderizar se a frase é a mesma
+    if (_hoverState.page === pageNum && _hoverState.sentStart === sentStart && _hoverState.sentEnd === sentEnd) return;
+    _hoverState = { page: pageNum, sentStart, sentEnd };
+
+    const lines = _groupLines(words, sentStart, sentEnd);
+    hoverPath.setAttribute('d', _buildD(lines, 0.003, 0.002, 8));
 }
 
 function highlightWordOnPdf(boundaryIdx, pageNum) {
