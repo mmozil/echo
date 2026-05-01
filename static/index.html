@@ -1700,29 +1700,55 @@ function waitForAudioReady() {
     });
 }
 
-// Click handler para a text layer do PDF.js
-// O span clicado contem o texto exato do PDF — busca direta no chunk
+// Click handler — usa pageWordPositions (ordem de leitura confiável do PyMuPDF)
 async function handleTextLayerClick(pageNum, clickedSpan, textLayerDiv) {
     if (!settings.clickToListen) return;
 
-    // Pegar o texto do span clicado + os proximos spans (contexto)
-    const allSpans = [...textLayerDiv.querySelectorAll('span[data-text]')];
-    const spanIdx = allSpans.indexOf(clickedSpan);
-    const clickedText = allSpans.slice(spanIdx, spanIdx + 10).map(s => s.dataset.text).join(' ');
-
-    // Highlight visual no span clicado
-    allSpans.forEach(s => s.classList.remove('playing'));
-    clickedSpan.classList.add('playing');
+    // 1) Pegar coordenadas relativas (0-1) do clique no PDF
+    const layerRect = textLayerDiv.getBoundingClientRect();
+    const spanRect = clickedSpan.getBoundingClientRect();
+    const relX = ((spanRect.left + spanRect.right) / 2 - layerRect.left) / layerRect.width;
+    const relY = ((spanRect.top + spanRect.bottom) / 2 - layerRect.top) / layerRect.height;
 
     showPlayLoading(true);
     lastPdfHighlightIdx = -1;
 
     try {
-        // PASSO 1: Encontrar o chunk que contem este texto
-        const chunkIdx = await findCorrectChunk(pageNum, clickedText.split(/\s+/));
+        // 2) Carregar palavras da página em ORDEM DE LEITURA (PyMuPDF)
+        const pageWords = await loadPageWords(pageNum);
+        if (!pageWords || !pageWords.length) {
+            console.warn('[click] sem pageWordPositions para página', pageNum);
+            showPlayLoading(false);
+            return;
+        }
+
+        // 3) Achar palavra clicada por proximidade espacial
+        let clickIdx = 0, bestDist = Infinity;
+        for (let i = 0; i < pageWords.length; i++) {
+            const w = pageWords[i];
+            const wxm = (w.x0 + w.x1) / 2, wym = (w.y0 + w.y1) / 2;
+            const dx = wxm - relX, dy = (wym - relY) * 2; // pesa Y mais
+            const dist = dx*dx + dy*dy;
+            if (dist < bestDist) { bestDist = dist; clickIdx = i; }
+        }
+
+        // 4) Walkback até início da FRASE (palavra anterior termina com .!?)
+        let sentStartIdx = clickIdx;
+        for (let i = clickIdx - 1; i >= 0; i--) {
+            if (/[.!?]$/.test(pageWords[i].word)) { sentStartIdx = i + 1; break; }
+            sentStartIdx = i;
+        }
+
+        // 5) Contexto = N palavras a partir do início da frase (ordem de leitura)
+        const contextWords = pageWords.slice(sentStartIdx, sentStartIdx + 12).map(w => w.word);
+        const contextText = contextWords.join(' ');
+        console.log('[click] start sentença:', contextText.slice(0, 80));
+
+        // 6) Achar chunk que contém o contexto
+        const chunkIdx = await findCorrectChunk(pageNum, contextWords);
         currentChunkIndex = chunkIdx;
 
-        // PASSO 2: Obter audio + boundaries
+        // 7) Obter áudio + boundaries
         let data;
         if (prefetchCache[currentChunkIndex]) { data = prefetchCache[currentChunkIndex]; delete prefetchCache[currentChunkIndex]; }
         else { const r = await fetch(`/api/documents/${currentDoc.id}/chunks/${currentChunkIndex}/audio`, {method:'POST'}); data = await r.json(); }
@@ -1733,46 +1759,32 @@ async function handleTextLayerClick(pageNum, clickedSpan, textLayerDiv) {
         await new Promise(r => requestAnimationFrame(r));
         buildBoundaryMap();
 
-        // PASSO 3: Encontrar posição no áudio — sempre VOLTA até o início da frase
+        // 8) Localizar contexto no chunk → contar palavras antes → seek na boundary
         let seekTimeSec = 0;
         if (wordBoundaries.length > 0) {
             const chunkText = data.text || await getChunkFullText(currentChunkIndex);
-
-            // Match no texto NORMALIZADO (sem pontuação) — robusto a aspas/hífens
             const chunkNorm = normalize(chunkText);
-            const clickNorm = normalize(clickedText.split(/\s+/).slice(0, 8).join(' '));
-            let charPosNorm = chunkNorm.indexOf(clickNorm);
-            if (charPosNorm < 0) {
-                const shortNorm = normalize(clickedText.split(/\s+/).slice(0, 3).join(' '));
-                charPosNorm = chunkNorm.indexOf(shortNorm);
+            const ctxNorm = normalize(contextText);
+
+            let charPos = chunkNorm.indexOf(ctxNorm);
+            if (charPos < 0) {
+                // Fallback: contexto curto (4 palavras)
+                const shortNorm = normalize(contextWords.slice(0, 4).join(' '));
+                charPos = chunkNorm.indexOf(shortNorm);
+            }
+            if (charPos < 0) {
+                // Fallback final: 2 palavras
+                const tinyNorm = normalize(contextWords.slice(0, 2).join(' '));
+                charPos = chunkNorm.indexOf(tinyNorm);
             }
 
-            if (charPosNorm >= 0) {
-                // Quantas palavras antes do click no chunk normalizado
-                const wordsBeforeClick = chunkNorm.substring(0, charPosNorm).split(' ').filter(w => w).length;
-
-                // Mapear N palavras para posição no chunkText ORIGINAL (com pontuação)
-                let chunkWordCount = 0, charPosOrig = chunkText.length;
-                const wordRe = /\S+/g;
-                let m;
-                while ((m = wordRe.exec(chunkText)) !== null) {
-                    if (chunkWordCount === wordsBeforeClick) { charPosOrig = m.index; break; }
-                    chunkWordCount++;
-                }
-
-                // Voltar até o último .!? ANTES de charPosOrig no texto original
-                let sentStartChar = 0;
-                for (let i = charPosOrig - 1; i >= 0; i--) {
-                    const ch = chunkText[i];
-                    if (ch === '.' || ch === '!' || ch === '?') { sentStartChar = i + 1; break; }
-                }
-                // Pular espaços, quebras e aspas iniciais
-                while (sentStartChar < charPosOrig && /[\s"'“”\-—]/.test(chunkText[sentStartChar])) sentStartChar++;
-
-                // Contar palavras antes do início da frase
-                const wordsBeforeSent = (chunkText.substring(0, sentStartChar).match(/\S+/g) || []).length;
-                const bIdx = Math.min(wordsBeforeSent, wordBoundaries.length - 1);
+            if (charPos >= 0) {
+                const wordsBefore = chunkNorm.substring(0, charPos).split(' ').filter(w => w).length;
+                const bIdx = Math.min(wordsBefore, wordBoundaries.length - 1);
                 seekTimeSec = (wordBoundaries[bIdx]?.offset_ms || 0) / 1000;
+                console.log('[click] seek =', seekTimeSec.toFixed(2), 's | palavras antes:', wordsBefore);
+            } else {
+                console.warn('[click] contexto não localizado no chunk');
             }
         }
 
