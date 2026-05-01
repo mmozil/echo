@@ -933,6 +933,10 @@ async function loadPdfDocument() {
     const pv = document.getElementById('pdfView');
     pv.innerHTML = '<div style="padding:40px;text-align:center"><div class="loading-spinner" style="margin:0 auto 12px"></div><p style="font-size:13px;color:var(--mist)">Carregando documento...</p></div>';
 
+    // No mobile/touch: pular PDF.js (memória/perf) e usar PNG do servidor + SVG highlight
+    const isMobile = window.matchMedia('(max-width: 640px)').matches || 'ontouchstart' in window;
+    if (isMobile) { loadPdfPagesFallback(); attachPageClickHandlers(); return; }
+
     try {
         // Wait for pdfjsLib to be available
         let retries = 0;
@@ -1906,6 +1910,98 @@ function waitForAudioReady() {
         audio.addEventListener('canplay', onReady);
         setTimeout(resolve, 3000);
     });
+}
+
+// Click handler genérico em .pdf-page (mobile/fallback) — sem text layer
+// Usa coordenadas do click e pageWordPositions
+function attachPageClickHandlers() {
+    const pv = document.getElementById('pdfView');
+    if (!pv) return;
+    pv.addEventListener('click', async (e) => {
+        if (!settings.clickToListen) return;
+        const pageEl = e.target.closest('.pdf-page');
+        if (!pageEl) return;
+        const pageNum = parseInt(pageEl.dataset.page);
+        if (!pageNum) return;
+        const rect = pageEl.getBoundingClientRect();
+        const relX = (e.clientX - rect.left) / rect.width;
+        const relY = (e.clientY - rect.top) / rect.height;
+        await handlePageClick(pageNum, relX, relY);
+    }, { passive: true });
+}
+
+// Lógica unificada de click — recebe coords relativas (0-1) na página
+async function handlePageClick(pageNum, relX, relY) {
+    showPlayLoading(true);
+    lastPdfHighlightIdx = -1;
+
+    try {
+        const pageWords = await loadPageWords(pageNum);
+        if (!pageWords || !pageWords.length) { showPlayLoading(false); return; }
+
+        let clickIdx = 0, bestDist = Infinity;
+        for (let i = 0; i < pageWords.length; i++) {
+            const w = pageWords[i];
+            const wxm = (w.x0 + w.x1) / 2, wym = (w.y0 + w.y1) / 2;
+            const dx = wxm - relX, dy = (wym - relY) * 2;
+            const dist = dx*dx + dy*dy;
+            if (dist < bestDist) { bestDist = dist; clickIdx = i; }
+        }
+
+        let sentStartIdx = clickIdx;
+        for (let i = clickIdx - 1; i >= 0; i--) {
+            if (/[.!?]$/.test(pageWords[i].word)) { sentStartIdx = i + 1; break; }
+            sentStartIdx = i;
+        }
+
+        const contextWords = pageWords.slice(sentStartIdx, sentStartIdx + 12).map(w => w.word);
+        const chunkIdx = await findCorrectChunk(pageNum, contextWords);
+        currentChunkIndex = chunkIdx;
+
+        let data;
+        if (prefetchCache[currentChunkIndex]) { data = prefetchCache[currentChunkIndex]; delete prefetchCache[currentChunkIndex]; }
+        else { const r = await fetch(`/api/documents/${currentDoc.id}/chunks/${currentChunkIndex}/audio`, {method:'POST'}); data = await r.json(); }
+
+        wordBoundaries = data.boundaries || [];
+        _sentenceRanges = [];
+        if (data.text) renderTextWithWords(data.text);
+        await new Promise(r => requestAnimationFrame(r));
+        buildBoundaryMap();
+
+        let seekTimeSec = 0;
+        if (wordBoundaries.length > 0) {
+            const bIdx = findBoundaryByWordSequence(contextWords);
+            if (bIdx >= 0 && wordBoundaries[bIdx]) {
+                seekTimeSec = wordBoundaries[bIdx].offset_ms / 1000;
+            }
+        }
+
+        audio.src = data.audio_url;
+        audio.playbackRate = currentSpeed;
+        await waitForAudioReady();
+
+        if (seekTimeSec > 0.1) {
+            audio.currentTime = seekTimeSec;
+            await new Promise(resolve => {
+                const onSeeked = () => { audio.removeEventListener('seeked', onSeeked); resolve(); };
+                audio.addEventListener('seeked', onSeeked);
+                setTimeout(resolve, 2000);
+            });
+        }
+
+        await audio.play();
+        isPlaying = true;
+        showPlayLoading(false);
+        updatePlayButton();
+        updateChapterDisplay();
+        startHighlightLoop();
+        resetPlayerIdle();
+        prefetchAhead(currentChunkIndex);
+    } catch(e) {
+        console.error('[click] erro:', e);
+        showPlayLoading(false);
+        showToast(e.message || 'Erro ao iniciar leitura');
+    }
 }
 
 // Click handler — usa pageWordPositions (ordem de leitura confiável do PyMuPDF)
