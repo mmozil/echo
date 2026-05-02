@@ -5,8 +5,16 @@ __pycache__/
 data/*.db
 data/uploads/
 data/audio/
+data/covers/
+data/pages/
 .venv/
 *.egg-info/
 dist/
 build/
 .DS_Store
+
+# Artefatos locais (Claude Code, Playwright, QR temporários)
+.claude/
+.playwright-mcp/
+*.png
+!mobile/assets/**/*.png
