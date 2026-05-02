@@ -52,6 +52,7 @@ export default function Reader() {
   });
 
   const [viewMode, setViewMode] = useState<ViewMode>('pdf');
+  const [tocOpen, setTocOpen] = useState(false);
   const [chunkIdx, setChunkIdx] = useState(0);
   const [boundaries, setBoundaries] = useState<Boundary[]>([]);
   const [pageWords, setPageWords] = useState<Record<number, Word[]>>({});
@@ -209,6 +210,15 @@ export default function Reader() {
     if (status.isPlaying) await soundRef.current.pauseAsync();
     else await soundRef.current.playAsync();
   }, [chunkIdx, playChunk]);
+
+  // Navega pra primeira chunk de uma dada página (TOC click)
+  const goToPage = useCallback(async (page: number) => {
+    if (!data) return;
+    const chunk = data.chunks.find(c => c.page >= page);
+    if (!chunk) return;
+    setTocOpen(false);
+    await playChunk(chunk.index, 0);
+  }, [data, playChunk]);
 
   const skip10 = useCallback((dir: 1 | -1) => {
     if (!soundRef.current) return;
@@ -385,6 +395,7 @@ export default function Reader() {
           isLoading={isLoadingAudio}
           onPlayPause={togglePlay}
           onSkip10={skip10}
+          onChapterPress={() => toc?.length && setTocOpen(true)}
           speed={speed}
           onSpeedChange={(s) => {
             setSpeed(s);
@@ -392,6 +403,59 @@ export default function Reader() {
           }}
         />
       </View>
+
+      {/* TOC Modal — lista de capítulos com página */}
+      <Modal
+        visible={tocOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setTocOpen(false)}
+      >
+        <Pressable style={styles.sheetBackdrop} onPress={() => setTocOpen(false)}>
+          <Pressable style={styles.tocSheet} onPress={(e) => e.stopPropagation()}>
+            <View style={styles.tocHeader}>
+              <Text style={styles.tocHeaderTitle}>Capítulos</Text>
+              <Pressable onPress={() => setTocOpen(false)} hitSlop={10}>
+                <Text style={styles.tocClose}>×</Text>
+              </Pressable>
+            </View>
+            <ScrollView style={{ maxHeight: 480 }} showsVerticalScrollIndicator={false}>
+              {toc?.map((item, i) => {
+                const active = chapterName === item.title;
+                const indent = Math.min((item.level - 1) * 16, 48);
+                return (
+                  <Pressable
+                    key={`${item.title}-${item.page}-${i}`}
+                    onPress={() => goToPage(item.page)}
+                    style={({ pressed }) => [
+                      styles.tocItem,
+                      pressed && styles.tocItemPressed,
+                      { paddingLeft: 14 + indent },
+                    ]}
+                  >
+                    <Text
+                      numberOfLines={2}
+                      style={[
+                        styles.tocItemTitle,
+                        active && styles.tocItemTitleActive,
+                        item.level > 1 && styles.tocItemTitleSub,
+                      ]}
+                    >
+                      {item.title}
+                    </Text>
+                    <Text style={[styles.tocItemPage, active && styles.tocItemPageActive]}>
+                      {item.page}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+              {(!toc || !toc.length) && (
+                <Text style={styles.tocEmpty}>Este livro não tem índice</Text>
+              )}
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -494,11 +558,12 @@ function TextView({ docId, chunks, chunkIdx, boundaries, activeBIdx, onPlayChunk
 // ===== Player =====
 const SPEED_OPTIONS = [0.75, 1, 1.25, 1.5, 2];
 
-function Player({ coverId, chapter, page, totalPages, elapsed, total, pct, isPlaying, isLoading, onPlayPause, onSkip10, speed, onSpeedChange }: {
+function Player({ coverId, chapter, page, totalPages, elapsed, total, pct, isPlaying, isLoading, onPlayPause, onSkip10, onChapterPress, speed, onSpeedChange }: {
   coverId: string; chapter: string; page: number; totalPages: number;
   elapsed: number; total: number; pct: number;
   isPlaying: boolean; isLoading: boolean;
   onPlayPause: () => void; onSkip10: (dir: 1 | -1) => void;
+  onChapterPress: () => void;
   speed: number; onSpeedChange: (s: number) => void;
 }) {
   const [coverFailed, setCoverFailed] = useState(false);
@@ -528,12 +593,12 @@ function Player({ coverId, chapter, page, totalPages, elapsed, total, pct, isPla
               onError={() => setCoverFailed(true)}
             />
           )}
-          <View style={styles.infoCol}>
+          <Pressable style={styles.infoCol} onPress={onChapterPress} hitSlop={4}>
             <Text numberOfLines={1} style={styles.chapterText}>{chapter}</Text>
             <Text numberOfLines={1} style={styles.metaText}>
               {fmt(elapsed)} · pág {page}/{totalPages} · {fmt(total)}
             </Text>
-          </View>
+          </Pressable>
 
           <Pressable onPress={() => onSkip10(-1)} hitSlop={4} style={styles.skipBtn}>
             <SkipIcon dir="back" />
@@ -788,4 +853,61 @@ const styles = StyleSheet.create({
   },
   sheetItemActive: { color: colors.ink, fontWeight: '700' },
   sheetCheck: { fontSize: 18, color: colors.ink, fontWeight: '900' },
+
+  // TOC sheet
+  tocSheet: {
+    backgroundColor: 'white',
+    borderTopLeftRadius: 18, borderTopRightRadius: 18,
+    paddingTop: 12, paddingBottom: 32,
+    maxHeight: '80%',
+  },
+  tocHeader: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 18, paddingBottom: 12,
+    borderBottomWidth: 1, borderBottomColor: colors.border,
+  },
+  tocHeaderTitle: {
+    fontSize: 16, fontWeight: '700',
+    color: colors.ink,
+    fontFamily: fonts.display,
+    letterSpacing: -0.2,
+  },
+  tocClose: {
+    fontSize: 24, color: colors.slate,
+    lineHeight: 24, fontWeight: '300',
+    paddingHorizontal: 6,
+  },
+  tocItem: {
+    flexDirection: 'row',
+    alignItems: 'center', justifyContent: 'space-between',
+    paddingVertical: 12, paddingRight: 14,
+    gap: 12,
+    borderBottomWidth: 1, borderBottomColor: '#F3F4F6',
+  },
+  tocItemPressed: { backgroundColor: colors.cloud },
+  tocItemTitle: {
+    flex: 1,
+    fontSize: 14, fontWeight: '500',
+    color: colors.charcoal,
+    fontFamily: fonts.body,
+    letterSpacing: -0.1,
+  },
+  tocItemTitleSub: {
+    color: colors.slate,
+    fontWeight: '400',
+    fontSize: 13,
+  },
+  tocItemTitleActive: { color: colors.ink, fontWeight: '700' },
+  tocItemPage: {
+    fontSize: 12, fontWeight: '500',
+    color: colors.mist,
+    fontVariant: ['tabular-nums'],
+    minWidth: 32, textAlign: 'right',
+  },
+  tocItemPageActive: { color: colors.ink, fontWeight: '700' },
+  tocEmpty: {
+    fontSize: 13, color: colors.slate,
+    textAlign: 'center',
+    paddingVertical: 32,
+  },
 });
