@@ -7,9 +7,19 @@ import { Image } from 'expo-image';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, router } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
-import { Audio, AVPlaybackStatus } from 'expo-av';
+import TrackPlayer, {
+  Event,
+  State,
+  usePlaybackState,
+  useProgress,
+  useTrackPlayerEvents,
+} from 'react-native-track-player';
 import { BlurView } from 'expo-blur';
 import Svg, { Path } from 'react-native-svg';
+import {
+  ensurePlayerSetup, loadAndPlay, play as tpPlay, pause as tpPause,
+  jumpBy, seekTo as tpSeek, setRate as tpSetRate,
+} from '@/lib/player';
 import {
   getDocument, getChunkAudio, getPageWords, getToc, saveProgress,
   audioUrl, pageImageUrl, coverUrl, type Chunk, type TocItem,
@@ -58,34 +68,32 @@ export default function Reader() {
   const [pageWords, setPageWords] = useState<Record<number, Word[]>>({});
   const [pageTimings, setPageTimings] = useState<Record<number, WordTimingMap>>({});
   const [activeBIdx, setActiveBIdx] = useState(-1);
-  const [isPlaying, setIsPlaying] = useState(false);
   const [isLoadingAudio, setIsLoadingAudio] = useState(false);
-  const [posMs, setPosMs] = useState(0);
   const [speed, setSpeed] = useState(1);
+  // Estado do TrackPlayer (lockscreen-aware)
+  const playbackState = usePlaybackState();
+  const progress = useProgress(250); // 250ms tick — suave pra highlight
+  const isPlaying = playbackState.state === State.Playing;
+  const posMs = progress.position * 1000;
 
-  const soundRef = useRef<Audio.Sound | null>(null);
-  const soundChunkIdxRef = useRef(-1); // qual chunk está em soundRef.current
+  const soundChunkIdxRef = useRef(-1); // qual chunk está atualmente carregado
   const flatRef = useRef<FlatList<number>>(null);
   const chunkDur = useRef<Record<number, number>>({});
   const userScrollingRef = useRef(false);
   const userScrollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Sequência para abortar plays antigos (anti-overlap)
   const playSeqRef = useRef(0);
 
-  // Áudio em background
+  // Inicializa o TrackPlayer uma vez (lockscreen + bg audio)
   useEffect(() => {
-    Audio.setAudioModeAsync({
-      staysActiveInBackground: true,
-      playsInSilentModeIOS: true,
-      shouldDuckAndroid: true,
-      interruptionModeIOS: 1,
-      interruptionModeAndroid: 1,
-    }).catch(() => {});
-    return () => {
-      playSeqRef.current++; // invalida loads pendentes
-      soundRef.current?.unloadAsync().catch(() => {});
-    };
+    ensurePlayerSetup().catch((e) => console.warn('player setup:', e));
   }, []);
+
+  // Atualiza chunkDur com a duração real quando o áudio carrega
+  useEffect(() => {
+    if (progress.duration > 0 && soundChunkIdxRef.current >= 0) {
+      chunkDur.current[soundChunkIdxRef.current] = progress.duration * 1000;
+    }
+  }, [progress.duration]);
 
   useEffect(() => {
     if (data?.progress?.current_chunk != null) {
@@ -137,59 +145,50 @@ export default function Reader() {
     flatRef.current?.scrollToIndex({ index: chunk.page - 1, animated: true, viewPosition: 0.1 });
   }, [chunkIdx, data?.document?.id, viewMode]);
 
-  // Toca chunk com proteção anti-overlap
+  // Toca chunk com proteção anti-overlap (TrackPlayer)
   const playChunk = useCallback(async (idx: number, seekToMs = 0) => {
     if (!data) return;
 
     // FAST PATH: mesmo chunk já carregado → só seek (sem reload)
-    if (soundRef.current && soundChunkIdxRef.current === idx) {
+    if (soundChunkIdxRef.current === idx) {
       try {
-        await soundRef.current.setPositionAsync(seekToMs);
-        await soundRef.current.playAsync();
+        await tpSeek(seekToMs / 1000);
+        await tpPlay();
         saveProgress(docId, idx, seekToMs).catch(() => {});
         return;
       } catch (e) {
-        console.warn('[playChunk] fast-path falhou, fazendo full reload:', e);
+        console.warn('[playChunk] fast-path falhou, full reload:', e);
       }
     }
 
     const seq = ++playSeqRef.current;
     setIsLoadingAudio(true);
     try {
-      const prev = soundRef.current;
-      soundRef.current = null;
-      soundChunkIdxRef.current = -1;
-      if (prev) await prev.unloadAsync().catch(() => {});
-      if (seq !== playSeqRef.current) return;
-
       const audio = await getChunkAudio(docId, idx);
       if (seq !== playSeqRef.current) return;
       setBoundaries(audio.boundaries);
 
-      const { sound } = await Audio.Sound.createAsync(
-        { uri: audioUrl(audio.audio_url) },
-        { shouldPlay: true, rate: speed, positionMillis: seekToMs },
-        (status: AVPlaybackStatus) => {
-          if (!status.isLoaded) return;
-          setPosMs(status.positionMillis || 0);
-          if (status.durationMillis) chunkDur.current[idx] = status.durationMillis;
-          setIsPlaying(status.isPlaying);
-          if (status.didJustFinish) {
-            const nextIdx = idx + 1;
-            if (nextIdx < data.chunks.length) {
-              setChunkIdx(nextIdx);
-              playChunk(nextIdx, 0);
-            } else {
-              setIsPlaying(false);
-            }
-          }
+      const chunk = data.chunks[idx];
+      const chapterName = (() => {
+        if (!toc?.length || !chunk) return `Trecho ${idx + 1}`;
+        for (let i = toc.length - 1; i >= 0; i--) {
+          if (toc[i].page <= chunk.page) return toc[i].title;
         }
+        return `Página ${chunk.page}`;
+      })();
+
+      await loadAndPlay(
+        {
+          url: audioUrl(audio.audio_url),
+          title: chapterName,
+          artist: data.document.title,
+          artwork: coverUrl(data.document.id),
+        },
+        seekToMs / 1000,
+        speed,
       );
-      if (seq !== playSeqRef.current) {
-        sound.unloadAsync().catch(() => {});
-        return;
-      }
-      soundRef.current = sound;
+
+      if (seq !== playSeqRef.current) return;
       soundChunkIdxRef.current = idx;
       setChunkIdx(idx);
       saveProgress(docId, idx, seekToMs).catch(() => {});
@@ -198,18 +197,25 @@ export default function Reader() {
     } finally {
       if (seq === playSeqRef.current) setIsLoadingAudio(false);
     }
-  }, [data, docId, speed]);
+  }, [data, docId, speed, toc]);
+
+  // Auto-advance: quando uma track termina, vai pra próxima
+  useTrackPlayerEvents([Event.PlaybackQueueEnded], async () => {
+    if (!data) return;
+    const nextIdx = soundChunkIdxRef.current + 1;
+    if (nextIdx > 0 && nextIdx < data.chunks.length) {
+      await playChunk(nextIdx, 0);
+    }
+  });
 
   const togglePlay = useCallback(async () => {
-    if (!soundRef.current) {
+    if (soundChunkIdxRef.current < 0) {
       await playChunk(chunkIdx, 0);
       return;
     }
-    const status = await soundRef.current.getStatusAsync();
-    if (!status.isLoaded) { await playChunk(chunkIdx, 0); return; }
-    if (status.isPlaying) await soundRef.current.pauseAsync();
-    else await soundRef.current.playAsync();
-  }, [chunkIdx, playChunk]);
+    if (isPlaying) await tpPause();
+    else await tpPlay();
+  }, [chunkIdx, playChunk, isPlaying]);
 
   // Navega pra primeira chunk de uma dada página (TOC click)
   const goToPage = useCallback(async (page: number) => {
@@ -221,12 +227,7 @@ export default function Reader() {
   }, [data, playChunk]);
 
   const skip10 = useCallback((dir: 1 | -1) => {
-    if (!soundRef.current) return;
-    soundRef.current.getStatusAsync().then(s => {
-      if (!s.isLoaded) return;
-      const newPos = Math.max(0, Math.min((s.positionMillis || 0) + dir * 10000, s.durationMillis || 0));
-      soundRef.current?.setPositionAsync(newPos);
-    });
+    jumpBy(dir * 10).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -399,7 +400,7 @@ export default function Reader() {
           speed={speed}
           onSpeedChange={(s) => {
             setSpeed(s);
-            soundRef.current?.setRateAsync(s, true).catch(() => {});
+            tpSetRate(s).catch(() => {});
           }}
         />
       </View>
