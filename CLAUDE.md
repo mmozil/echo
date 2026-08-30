@@ -71,6 +71,34 @@ Echo/
 - **Sem redirects server-side:** /app e /login sempre servem HTML, JS controla auth
 - **Fetch interceptor:** index.html injeta `Authorization: Bearer` em todas chamadas `/api/`
 
+### Propriedade dos documentos (corrigido em 08/2026)
+
+Até 08/2026 a tabela `documents` **não tinha coluna de dono** e as rotas de
+documento não pediam sessão: um `curl` sem token listava e apagava a biblioteca
+de todo mundo. Hoje:
+
+- `documents.user_id` e `reading_progress(user_id, document_id)` — migração
+  idempotente em `src/database.py` (`ALTER TABLE` guardado por `PRAGMA
+  table_info`; `reading_progress` foi recriada porque SQLite não troca PK).
+- Documentos legados (sem dono) são adotados pelo **usuário mais antigo** no
+  primeiro boot. Órfão nunca é apagado nem escondido.
+- 🚨 **Mídia se autentica pelo COOKIE, não pelo Bearer.** `<img>`, `<audio>` e o
+  PDF.js não conseguem mandar header `Authorization` — quem carrega capa,
+  página PNG, MP3 e PDF é o navegador, e ele leva sozinho o cookie httponly
+  `echo_session` por ser mesma origem. Exigir Bearer nessas rotas quebra o app
+  inteiro. URL assinada foi descartada: seria um segundo tipo de credencial e
+  colocaria token dentro da URL (log, histórico, Referer, cache de CDN).
+- No **mobile não há cookie**: lá vai o mesmo Bearer por header — `expo-image`
+  aceita `headers` no `source` e o `react-native-track-player` na track
+  (`authHeaders()` em `mobile/src/lib/api.ts`).
+- Toda resposta de mídia sai com `Cache-Control: private, no-store` — sem isso a
+  Cloudflare cachearia os `.png` pela extensão e entregaria a capa de um
+  usuário para outro, com a rota já protegida.
+- `POST /api/auth/register` **não sobrescreve conta existente** (devolve 409).
+  Antes chamava `create_or_update_user`: quem soubesse o e-mail de alguém
+  trocava a senha da vítima e entrava na conta dela.
+- Testes: `pytest tests/ -q` (deps em `requirements-dev.txt`).
+
 ## Deploy (Coolify)
 
 - **Build pack:** `dockercompose` (docker-compose.yml)
@@ -96,19 +124,23 @@ Echo/
 | POST | `/api/auth/register` | - | Registro → retorna token |
 | GET | `/api/auth/me` | Bearer | Info do user logado |
 | POST | `/api/auth/logout` | Bearer | Destroi sessão |
-| POST | `/api/documents` | - | Upload PDF (multipart) |
-| GET | `/api/documents` | - | Listar biblioteca |
-| GET | `/api/documents/{id}` | - | Detalhes + chunks |
-| DELETE | `/api/documents/{id}` | - | Remover (limpa files) |
-| GET | `/api/documents/{id}/pdf` | Bearer | Serve PDF original |
-| GET | `/api/documents/{id}/toc` | - | Table of contents |
-| GET | `/api/documents/{id}/search?q=` | - | Busca full-text |
-| POST | `/api/documents/{id}/chunks/{i}/audio` | - | Gerar áudio chunk |
-| GET | `/api/documents/{id}/chunks/{i}/text` | - | Texto do chunk |
-| GET | `/api/documents/{id}/pages/{p}.png` | - | Página renderizada |
-| GET | `/api/documents/{id}/pages/{p}/words` | - | Posições das palavras |
-| GET | `/api/covers/{id}.png` | - | Capa do documento |
-| PUT | `/api/documents/{id}/progress` | - | Salvar progresso |
-| GET | `/api/voices` | - | Listar vozes |
+| POST | `/api/auth/session-cookie` | Bearer | Reemite o cookie de sessão (mídia) |
+| POST | `/api/documents` | dono | Upload PDF (multipart) |
+| GET | `/api/documents` | dono | Listar biblioteca (só a do usuário) |
+| GET | `/api/documents/{id}` | dono | Detalhes + chunks |
+| DELETE | `/api/documents/{id}` | dono | Remover (limpa files) |
+| GET | `/api/documents/{id}/pdf` | dono | Serve PDF original |
+| GET | `/api/documents/{id}/toc` | dono | Table of contents |
+| GET | `/api/documents/{id}/search?q=` | dono | Busca full-text |
+| POST | `/api/documents/{id}/chunks/{i}/audio` | dono | Gerar áudio chunk |
+| GET | `/api/documents/{id}/chunks/{i}/text` | dono | Texto do chunk |
+| GET | `/api/documents/{id}/pages/{p}.png` | dono | Página renderizada |
+| GET | `/api/documents/{id}/pages/{p}/words` | dono | Posições das palavras |
+| GET | `/api/covers/{id}.png` | dono | Capa do documento |
+| PUT | `/api/documents/{id}/progress` | dono | Salvar progresso (por usuário) |
+| GET | `/api/voices` | Bearer/cookie | Listar vozes |
 | GET | `/api/health` | - | Health check |
-| POST | `/api/admin` | admin_key | Debug/manutenção |
+| POST | `/api/admin` | `ECHO_ADMIN_KEY` | Debug/manutenção (desligado sem a env) |
+
+**dono** = exige sessão *e* ser o dono do documento. Documento de outra pessoa
+responde **404**, nunca 403 — 403 confirmaria que aquele id existe.

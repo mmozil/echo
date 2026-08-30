@@ -22,7 +22,7 @@ import {
 } from '@/lib/player';
 import {
   getDocument, getChunkAudio, getPageWords, getToc, saveProgress,
-  audioUrl, pageImageUrl, coverUrl, type Chunk, type TocItem,
+  audioUrl, pageImageUrl, coverUrl, authHeaders, type Chunk, type TocItem,
 } from '@/lib/api';
 import {
   buildSentenceD, findNearestWord, sentenceRange,
@@ -182,7 +182,8 @@ export default function Reader() {
           url: audioUrl(audio.audio_url),
           title: chapterName,
           artist: data.document.title,
-          artwork: coverUrl(data.document.id),
+          artwork: coverUrl(data.document.id).uri,
+          headers: authHeaders(),
         },
         seekToMs / 1000,
         speed,

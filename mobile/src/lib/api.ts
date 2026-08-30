@@ -9,10 +9,26 @@ export const api = axios.create({
   timeout: 30000,
 });
 
+// Token em memoria: capa, pagina e audio sao carregados por componentes
+// nativos (expo-image, track-player) que precisam do header na hora, sem
+// poder esperar o SecureStore (que e assincrono).
+let tokenEmMemoria: string | null = null;
+
+export async function initAuthToken(): Promise<string | null> {
+  tokenEmMemoria = await SecureStore.getItemAsync('echo_token').catch(() => null);
+  return tokenEmMemoria;
+}
+
+/** Header de autenticacao para midia. Sem cookie no mobile — aqui e Bearer. */
+export function authHeaders(): Record<string, string> | undefined {
+  return tokenEmMemoria ? { Authorization: `Bearer ${tokenEmMemoria}` } : undefined;
+}
+
 // Inject Bearer token em toda request
 api.interceptors.request.use(async (config) => {
   const token = await SecureStore.getItemAsync('echo_token');
   if (token) {
+    tokenEmMemoria = token;
     config.headers.Authorization = `Bearer ${token}`;
   }
   return config;
@@ -23,6 +39,7 @@ api.interceptors.response.use(
   (r) => r,
   async (err) => {
     if (err.response?.status === 401) {
+      tokenEmMemoria = null;
       await SecureStore.deleteItemAsync('echo_token');
     }
     return Promise.reject(err);
@@ -32,18 +49,21 @@ api.interceptors.response.use(
 // === Auth ===
 export async function login(email: string, password: string) {
   const r = await api.post('/api/auth/login', { email, password });
+  tokenEmMemoria = r.data.token;
   await SecureStore.setItemAsync('echo_token', r.data.token);
   return r.data;
 }
 
 export async function register(name: string, email: string, password: string) {
   const r = await api.post('/api/auth/register', { name, email, password });
+  tokenEmMemoria = r.data.token;
   await SecureStore.setItemAsync('echo_token', r.data.token);
   return r.data;
 }
 
 export async function logout() {
   await api.post('/api/auth/logout').catch(() => {});
+  tokenEmMemoria = null;
   await SecureStore.deleteItemAsync('echo_token');
 }
 
@@ -123,14 +143,18 @@ export async function saveProgress(docId: string, chunkIndex: number, positionMs
   });
 }
 
+// A midia agora exige sessao no servidor. Na web quem autentica e o cookie
+// httponly (img/audio nao mandam header); aqui nao ha cookie, entao vai o
+// mesmo Bearer por header — expo-image aceita headers no source e o
+// track-player aceita headers na track.
 export function audioUrl(filename: string) {
   return `${API_BASE}${filename}`;
 }
 
 export function pageImageUrl(docId: string, page: number) {
-  return `${API_BASE}/api/documents/${docId}/pages/${page}.png`;
+  return { uri: `${API_BASE}/api/documents/${docId}/pages/${page}.png`, headers: authHeaders() };
 }
 
 export function coverUrl(docId: string) {
-  return `${API_BASE}/api/covers/${docId}.png`;
+  return { uri: `${API_BASE}/api/covers/${docId}.png`, headers: authHeaders() };
 }

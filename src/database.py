@@ -1,4 +1,14 @@
-"""Database SQLite para Echo — biblioteca de documentos e progresso de leitura."""
+"""Database SQLite para Echo — biblioteca de documentos e progresso de leitura.
+
+Modelo de propriedade (dono):
+    documents.user_id                       → quem é o dono do documento
+    reading_progress(user_id, document_id)  → progresso é POR PESSOA, não global
+
+Nenhuma das duas existia antes de 08/2026: sem coluna de dono no modelo de
+dados, proteger as rotas não bastaria — não havia contra o que comparar a
+sessão. As funções de leitura recebem user_id de propósito: quem esquecer de
+passar quebra a chamada, em vez de vazar dado calado.
+"""
 
 import sqlite3
 import os
@@ -41,6 +51,7 @@ def init_db():
 
         CREATE TABLE IF NOT EXISTS documents (
             id TEXT PRIMARY KEY,
+            user_id TEXT,
             title TEXT NOT NULL,
             filename TEXT NOT NULL,
             total_pages INTEGER DEFAULT 0,
@@ -48,7 +59,8 @@ def init_db():
             file_size INTEGER DEFAULT 0,
             cover_color TEXT DEFAULT '#003083',
             created_at TEXT DEFAULT (datetime('now')),
-            updated_at TEXT DEFAULT (datetime('now'))
+            updated_at TEXT DEFAULT (datetime('now')),
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
         );
 
         CREATE TABLE IF NOT EXISTS chunks (
@@ -63,17 +75,110 @@ def init_db():
         );
 
         CREATE TABLE IF NOT EXISTS reading_progress (
-            document_id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            document_id TEXT NOT NULL,
             current_chunk INTEGER DEFAULT 0,
             position_ms INTEGER DEFAULT 0,
             last_read_at TEXT DEFAULT (datetime('now')),
+            PRIMARY KEY (user_id, document_id),
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
             FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE
         );
 
         CREATE INDEX IF NOT EXISTS idx_chunks_doc ON chunks(document_id, chunk_index);
     """)
     conn.commit()
+    _migrar_schema(conn)
     conn.close()
+
+
+# --- Migração idempotente -------------------------------------------------
+# CREATE TABLE IF NOT EXISTS não altera tabela que já existe: num banco antigo
+# ele é no-op e a coluna nova nunca apareceria. Por isso cada passo abaixo
+# checa PRAGMA table_info antes de mexer — e pode rodar em todo boot sem efeito.
+
+def _colunas(conn, tabela: str) -> set[str]:
+    return {r[1] for r in conn.execute(f"PRAGMA table_info({tabela})").fetchall()}
+
+
+def _migrar_schema(conn):
+    _migrar_documents_user_id(conn)
+    _adotar_documentos_orfaos(conn)
+    _migrar_reading_progress_por_usuario(conn)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_documents_user ON documents(user_id)")
+    conn.commit()
+
+
+def _migrar_documents_user_id(conn):
+    if "user_id" in _colunas(conn, "documents"):
+        return
+    # Sem NOT NULL: as linhas existentes ficam NULL (órfãs) e são adotadas no
+    # passo seguinte. Exigir NOT NULL aqui obrigaria a chutar um dono no ALTER.
+    conn.execute("ALTER TABLE documents ADD COLUMN user_id TEXT REFERENCES users(id)")
+    conn.commit()
+    logger.warning("MIGRACAO: coluna documents.user_id criada")
+
+
+def _adotar_documentos_orfaos(conn):
+    """Documento sem dono vai para o usuário MAIS ANTIGO da instância.
+
+    O upload não pedia login, então os documentos legados não têm dono
+    registrado. Em produção existe um único usuário, que é o dono real.
+    Depois desta correção nenhum órfão novo nasce (upload exige sessão).
+    Órfão nunca é apagado nem escondido para sempre: se ainda não houver
+    usuário, a adoção é adiada para o próximo boot.
+    """
+    orfaos = conn.execute("SELECT COUNT(*) FROM documents WHERE user_id IS NULL").fetchone()[0]
+    if not orfaos:
+        return
+    dono = conn.execute("SELECT id, email FROM users ORDER BY created_at ASC, rowid ASC LIMIT 1").fetchone()
+    if not dono:
+        logger.error("MIGRACAO: %d documento(s) orfao(s) e nenhum usuario — adocao adiada "
+                     "para o proximo boot (nada foi apagado)", orfaos)
+        return
+    conn.execute("UPDATE documents SET user_id = ? WHERE user_id IS NULL", (dono["id"],))
+    conn.commit()
+    logger.warning("MIGRACAO: %d documento(s) orfao(s) atribuido(s) a %s (%s)",
+                   orfaos, dono["email"], dono["id"])
+
+
+def _migrar_reading_progress_por_usuario(conn):
+    """reading_progress tinha document_id como PRIMARY KEY (progresso global).
+
+    Para a chave virar (user_id, document_id) o SQLite exige recriar a tabela —
+    não existe ALTER TABLE que troque chave primária. As linhas existentes são
+    preservadas, herdando o dono do documento.
+    """
+    if "user_id" in _colunas(conn, "reading_progress"):
+        return
+    conn.execute("PRAGMA foreign_keys=OFF")
+    try:
+        conn.executescript("""
+            CREATE TABLE reading_progress_novo (
+                user_id TEXT NOT NULL,
+                document_id TEXT NOT NULL,
+                current_chunk INTEGER DEFAULT 0,
+                position_ms INTEGER DEFAULT 0,
+                last_read_at TEXT DEFAULT (datetime('now')),
+                PRIMARY KEY (user_id, document_id),
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+                FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE
+            );
+
+            INSERT INTO reading_progress_novo (user_id, document_id, current_chunk, position_ms, last_read_at)
+            SELECT d.user_id, rp.document_id, rp.current_chunk, rp.position_ms, rp.last_read_at
+            FROM reading_progress rp
+            JOIN documents d ON d.id = rp.document_id
+            WHERE d.user_id IS NOT NULL;
+
+            DROP TABLE reading_progress;
+            ALTER TABLE reading_progress_novo RENAME TO reading_progress;
+        """)
+        conn.commit()
+        migradas = conn.execute("SELECT COUNT(*) FROM reading_progress").fetchone()[0]
+        logger.warning("MIGRACAO: reading_progress agora e por usuario (%d linha(s) preservada(s))", migradas)
+    finally:
+        conn.execute("PRAGMA foreign_keys=ON")
 
 
 # --- Auth ---
@@ -201,41 +306,75 @@ def delete_session(token: str):
 
 # --- Documents ---
 
-def create_document(title: str, filename: str, total_pages: int, total_chunks: int, file_size: int) -> str:
+def create_document(user_id: str, title: str, filename: str, total_pages: int,
+                    total_chunks: int, file_size: int) -> str:
     doc_id = str(uuid.uuid4())[:8]
     colors = ["#1A1A1A", "#2D2D2D", "#404040", "#525252", "#374151", "#1F2937", "#111827"]
     color = colors[hash(title) % len(colors)]
     conn = get_db()
     conn.execute(
-        "INSERT INTO documents (id, title, filename, total_pages, total_chunks, file_size, cover_color) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        (doc_id, title, filename, total_pages, total_chunks, file_size, color),
+        "INSERT INTO documents (id, user_id, title, filename, total_pages, total_chunks, file_size, cover_color) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (doc_id, user_id, title, filename, total_pages, total_chunks, file_size, color),
     )
     conn.execute(
-        "INSERT INTO reading_progress (document_id, current_chunk, position_ms) VALUES (?, 0, 0)",
-        (doc_id,),
+        "INSERT INTO reading_progress (user_id, document_id, current_chunk, position_ms) VALUES (?, ?, 0, 0)",
+        (user_id, doc_id),
     )
     conn.commit()
     conn.close()
     return doc_id
 
 
-def list_documents() -> list[dict]:
+def list_documents(user_id: str) -> list[dict]:
+    """Biblioteca do usuário — nunca lista documento de outro dono."""
     conn = get_db()
     rows = conn.execute("""
         SELECT d.*, rp.current_chunk, rp.last_read_at
         FROM documents d
-        LEFT JOIN reading_progress rp ON d.id = rp.document_id
+        LEFT JOIN reading_progress rp ON rp.document_id = d.id AND rp.user_id = d.user_id
+        WHERE d.user_id = ?
         ORDER BY rp.last_read_at DESC, d.created_at DESC
-    """).fetchall()
+    """, (user_id,)).fetchall()
     conn.close()
     return [dict(r) for r in rows]
 
 
 def get_document(doc_id: str) -> dict | None:
+    """Documento sem filtro de dono — só para uso interno de manutenção.
+
+    Rota HTTP nenhuma deve chamar esta função: use get_document_for_user.
+    """
     conn = get_db()
     row = conn.execute("SELECT * FROM documents WHERE id = ?", (doc_id,)).fetchone()
     conn.close()
     return dict(row) if row else None
+
+
+def get_document_for_user(doc_id: str, user_id: str) -> dict | None:
+    """Documento do dono. Documento de outra pessoa devolve None (vira 404)."""
+    conn = get_db()
+    row = conn.execute(
+        "SELECT * FROM documents WHERE id = ? AND user_id = ?",
+        (doc_id, user_id),
+    ).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def count_documents_with_filename(filename: str, exclude_doc_id: str = "") -> int:
+    """Quantos OUTROS documentos apontam para o mesmo arquivo em disco.
+
+    O upload antigo gravava com o nome original do arquivo: dois documentos
+    podiam compartilhar o mesmo PDF. Apagar um não pode apagar o PDF do outro.
+    """
+    conn = get_db()
+    row = conn.execute(
+        "SELECT COUNT(*) FROM documents WHERE filename = ? AND id <> ?",
+        (filename, exclude_doc_id),
+    ).fetchone()
+    conn.close()
+    return row[0]
 
 
 def delete_document(doc_id: str):
@@ -279,6 +418,23 @@ def get_chunk(document_id: str, chunk_index: int) -> dict | None:
     return dict(row) if row else None
 
 
+def get_chunk_owner(chunk_id: str) -> str | None:
+    """Dono do documento a que o chunk pertence.
+
+    Usado por /api/audio/{filename}: o MP3 se chama {chunk_id}_{hash}.mp3,
+    então dá para provar a propriedade do arquivo sem índice novo — senão
+    qualquer pessoa logada leria o áudio do livro de qualquer outra.
+    """
+    conn = get_db()
+    row = conn.execute("""
+        SELECT d.user_id FROM chunks c
+        JOIN documents d ON d.id = c.document_id
+        WHERE c.id = ?
+    """, (chunk_id,)).fetchone()
+    conn.close()
+    return row["user_id"] if row else None
+
+
 def update_chunk_audio(chunk_id: str, audio_path: str, duration_ms: int):
     conn = get_db()
     conn.execute(
@@ -289,23 +445,28 @@ def update_chunk_audio(chunk_id: str, audio_path: str, duration_ms: int):
     conn.close()
 
 
-# --- Progress ---
+# --- Progress (por usuário) ---
 
-def update_progress(document_id: str, current_chunk: int, position_ms: int = 0):
+def update_progress(user_id: str, document_id: str, current_chunk: int, position_ms: int = 0):
+    """UPSERT: a linha pode não existir (ex.: documento adotado na migração)."""
     conn = get_db()
-    conn.execute(
-        "UPDATE reading_progress SET current_chunk = ?, position_ms = ?, last_read_at = ? WHERE document_id = ?",
-        (current_chunk, position_ms, datetime.now().isoformat(), document_id),
-    )
+    conn.execute("""
+        INSERT INTO reading_progress (user_id, document_id, current_chunk, position_ms, last_read_at)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(user_id, document_id) DO UPDATE SET
+            current_chunk = excluded.current_chunk,
+            position_ms = excluded.position_ms,
+            last_read_at = excluded.last_read_at
+    """, (user_id, document_id, current_chunk, position_ms, datetime.now().isoformat()))
     conn.commit()
     conn.close()
 
 
-def get_progress(document_id: str) -> dict | None:
+def get_progress(user_id: str, document_id: str) -> dict | None:
     conn = get_db()
     row = conn.execute(
-        "SELECT * FROM reading_progress WHERE document_id = ?",
-        (document_id,),
+        "SELECT * FROM reading_progress WHERE user_id = ? AND document_id = ?",
+        (user_id, document_id),
     ).fetchone()
     conn.close()
     return dict(row) if row else None

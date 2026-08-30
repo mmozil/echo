@@ -751,6 +751,12 @@ async function initApp() {
         }
         const d = await r.json();
         document.getElementById('userName').textContent = d.name;
+        // Garante o cookie de sessao antes de carregar qualquer midia.
+        // <img>, <audio> e o PDF.js nao conseguem mandar header Authorization:
+        // quem autentica capa, pagina PNG, MP3 e PDF e o cookie httponly
+        // echo_session, que viaja sozinho por ser mesma origem. Quem logou
+        // antes desta versao tem token no localStorage e pode estar sem cookie.
+        await fetch('/api/auth/session-cookie', { method: 'POST' }).catch(() => {});
     } catch {
         localStorage.removeItem('echo_token');
         window.location.href = '/login';

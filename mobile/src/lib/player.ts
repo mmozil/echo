@@ -61,6 +61,7 @@ export type TrackMeta = {
   artist: string;      // Título do livro
   artwork?: string;    // URL do cover (lockscreen art)
   duration?: number;   // segundos
+  headers?: Record<string, string>;  // Bearer — o MP3 exige sessão do dono
 };
 
 export async function loadAndPlay(track: TrackMeta, seekSec = 0, rate = 1) {
@@ -72,6 +73,7 @@ export async function loadAndPlay(track: TrackMeta, seekSec = 0, rate = 1) {
     artist: track.artist,
     artwork: track.artwork,
     duration: track.duration,
+    headers: track.headers,
   });
   if (seekSec > 0) await TrackPlayer.seekTo(seekSec);
   await TrackPlayer.setRate(rate);

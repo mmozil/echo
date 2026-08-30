@@ -4,8 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
-import * as SecureStore from 'expo-secure-store';
-import { coverUrl, listDocuments, logout } from '@/lib/api';
+import { coverUrl, listDocuments, logout, initAuthToken } from '@/lib/api';
 import { EchoLogo } from '@/components/EchoLogo';
 import { colors, fonts } from '@/lib/theme';
 
@@ -20,7 +19,8 @@ export default function Library() {
     const fail = () => { if (!cancelled) router.replace('/login'); };
     const ok = () => { if (!cancelled) setAuthChecked(true); };
     const timer = setTimeout(fail, 2000);
-    SecureStore.getItemAsync('echo_token')
+    // initAuthToken tambem preenche o token em memoria que a capa usa no header
+    initAuthToken()
       .then((t) => { clearTimeout(timer); t ? ok() : fail(); })
       .catch(() => { clearTimeout(timer); fail(); });
     return () => { cancelled = true; clearTimeout(timer); };
