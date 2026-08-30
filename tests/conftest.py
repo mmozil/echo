@@ -37,7 +37,7 @@ def tmp_raiz() -> Path:
 @pytest.fixture(scope="session", autouse=True)
 def _sem_tts():
     """Não gerar áudio de verdade nos testes (Edge TTS bate na rede)."""
-    async def _nada(doc_id: str):
+    async def _nada(doc_id: str, voice: str = ""):
         return None
 
     main._pregenerate_all_audio = _nada

@@ -115,6 +115,21 @@ export async function getToc(docId: string): Promise<TocItem[]> {
   return r.data.toc || [];
 }
 
+// === Vozes ===
+// As três pt-BR do Edge. A escolhida fica na CONTA (users.voice), então o
+// app e a web mostram a mesma voz — localStorage não atravessaria aparelho.
+export type Voz = { name: string; label: string; gender: string; locale: string };
+
+export async function getVoices(): Promise<{ voices: Voz[]; selected: string }> {
+  const r = await api.get('/api/voices', { params: { language: 'pt-BR' } });
+  return { voices: r.data.voices || [], selected: r.data.selected };
+}
+
+export async function saveVoice(voice: string) {
+  const r = await api.put('/api/voices/selected', { voice });
+  return r.data;
+}
+
 export async function getChunkAudio(docId: string, chunkIndex: number, voice = '') {
   const r = await api.post(`/api/documents/${docId}/chunks/${chunkIndex}/audio`, null, {
     params: { rate: '+0%', pitch: '+0Hz', voice },

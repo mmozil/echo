@@ -99,6 +99,28 @@ de todo mundo. Hoje:
   trocava a senha da vítima e entrava na conta dela.
 - Testes: `pytest tests/ -q` (deps em `requirements-dev.txt`).
 
+### Vozes (3 pt-BR, escolha por conta)
+
+`VOZES_PT_BR` em `src/tts_service.py` — **Francisca**, **Antônio**, **Thalita**.
+As de Portugal (`pt-PT-*`) ficam de fora: sotaque europeu se ouve na hora. A
+lista sai da constante, não da API do Edge, para a tela não depender de rede
+nem oferecer voz que o resto do código recusa (`voz_valida()`).
+
+- A escolha vive em **`users.voice`** (migração idempotente), não em
+  `localStorage` — o dono quer a mesma voz na web e no app, e quer que ela
+  sobreviva ao logout.
+- Trocável **durante a leitura**: botão ao lado da velocidade, no player
+  (web: `cycleVoice()`; mobile: folha de seleção igual à de velocidade).
+- 🚨 **A voz entra na chave do cache de áudio.** O arquivo é
+  `{chunk_id}_{md5(texto:voz:rate:pitch)}.mp3` (+ o `.json` de word boundaries,
+  que muda junto). Sem a voz na chave, trocar de voz continuaria tocando o MP3
+  antigo e pareceria que a troca não funciona — quando o errado é o cache.
+- 🚨 **Trocar de voz não apaga nada**: voltar para a voz anterior reaproveita o
+  MP3 que já existia (`cached: true`). Quem apaga tudo é só o DELETE do
+  documento, e ele varre `{chunk_id}_*` para não deixar MP3 órfão de outra voz.
+- 🚨 Ao trocar de voz o front **limpa o prefetch**: os próximos trechos já
+  tinham sido baixados na voz antiga.
+
 ## Deploy (Coolify)
 
 - **Build pack:** `dockercompose` (docker-compose.yml)
@@ -138,7 +160,8 @@ de todo mundo. Hoje:
 | GET | `/api/documents/{id}/pages/{p}/words` | dono | Posições das palavras |
 | GET | `/api/covers/{id}.png` | dono | Capa do documento |
 | PUT | `/api/documents/{id}/progress` | dono | Salvar progresso (por usuário) |
-| GET | `/api/voices` | Bearer/cookie | Listar vozes |
+| GET | `/api/voices` | Bearer/cookie | As 3 vozes pt-BR + a escolhida na conta |
+| PUT | `/api/voices/selected` | Bearer/cookie | Troca a voz da conta |
 | GET | `/api/health` | - | Health check |
 | POST | `/api/admin` | `ECHO_ADMIN_KEY` | Debug/manutenção (desligado sem a env) |
 

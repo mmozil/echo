@@ -22,7 +22,8 @@ import {
 } from '@/lib/player';
 import {
   getDocument, getChunkAudio, getPageWords, getToc, saveProgress,
-  audioUrl, pageImageUrl, coverUrl, authHeaders, type Chunk, type TocItem,
+  audioUrl, pageImageUrl, coverUrl, authHeaders, getVoices, saveVoice,
+  type Chunk, type TocItem, type Voz,
 } from '@/lib/api';
 import {
   buildSentenceD, findNearestWord, sentenceRange,
@@ -70,6 +71,12 @@ export default function Reader() {
   const [activeBIdx, setActiveBIdx] = useState(-1);
   const [isLoadingAudio, setIsLoadingAudio] = useState(false);
   const [speed, setSpeed] = useState(1);
+  // Voz: o ref é quem manda na hora de pedir o áudio. O estado só pinta o
+  // rótulo — ler do estado dentro do playChunk pegaria o valor de antes da
+  // troca (closure), e a pessoa ouviria a voz velha achando que não mudou.
+  const [voice, setVoiceLabel] = useState('pt-BR-AntonioNeural');
+  const [voices, setVoices] = useState<Voz[]>([]);
+  const voiceRef = useRef('pt-BR-AntonioNeural');
   // Estado do TrackPlayer (lockscreen-aware)
   const playbackState = usePlaybackState();
   const progress = useProgress(250); // 250ms tick — suave pra highlight
@@ -145,6 +152,16 @@ export default function Reader() {
     flatRef.current?.scrollToIndex({ index: chunk.page - 1, animated: true, viewPosition: 0.1 });
   }, [chunkIdx, data?.document?.id, viewMode]);
 
+  // Voz salva na conta — mesma da web
+  useEffect(() => {
+    getVoices()
+      .then(({ voices: vs, selected }) => {
+        setVoices(vs);
+        if (selected) { voiceRef.current = selected; setVoiceLabel(selected); }
+      })
+      .catch(() => {});
+  }, []);
+
   // Toca chunk com proteção anti-overlap (TrackPlayer)
   const playChunk = useCallback(async (idx: number, seekToMs = 0) => {
     if (!data) return;
@@ -164,7 +181,7 @@ export default function Reader() {
     const seq = ++playSeqRef.current;
     setIsLoadingAudio(true);
     try {
-      const audio = await getChunkAudio(docId, idx);
+      const audio = await getChunkAudio(docId, idx, voiceRef.current);
       if (seq !== playSeqRef.current) return;
       setBoundaries(audio.boundaries);
 
@@ -403,6 +420,17 @@ export default function Reader() {
             setSpeed(s);
             tpSetRate(s).catch(() => {});
           }}
+          voice={voice}
+          voices={voices}
+          onVoiceChange={async (v) => {
+            voiceRef.current = v;
+            setVoiceLabel(v);
+            saveVoice(v).catch(() => {});
+            // O trecho carregado é da voz antiga: sem zerar isto, o caminho
+            // rápido do playChunk faria só um seek e continuaria na voz velha.
+            soundChunkIdxRef.current = -1;
+            await playChunk(chunkIdx, posMs);
+          }}
         />
       </View>
 
@@ -560,16 +588,20 @@ function TextView({ docId, chunks, chunkIdx, boundaries, activeBIdx, onPlayChunk
 // ===== Player =====
 const SPEED_OPTIONS = [0.75, 1, 1.25, 1.5, 2];
 
-function Player({ coverId, chapter, page, totalPages, elapsed, total, pct, isPlaying, isLoading, onPlayPause, onSkip10, onChapterPress, speed, onSpeedChange }: {
+function Player({ coverId, chapter, page, totalPages, elapsed, total, pct, isPlaying, isLoading, onPlayPause, onSkip10, onChapterPress, speed, onSpeedChange, voice, voices, onVoiceChange }: {
   coverId: string; chapter: string; page: number; totalPages: number;
   elapsed: number; total: number; pct: number;
   isPlaying: boolean; isLoading: boolean;
   onPlayPause: () => void; onSkip10: (dir: 1 | -1) => void;
   onChapterPress: () => void;
   speed: number; onSpeedChange: (s: number) => void;
+  voice: string; voices: Voz[]; onVoiceChange: (v: string) => void;
 }) {
   const [coverFailed, setCoverFailed] = useState(false);
   const [speedOpen, setSpeedOpen] = useState(false);
+  const [voiceOpen, setVoiceOpen] = useState(false);
+  const voiceLabel = voices.find(v => v.name === voice)?.label
+    || voice.replace('pt-BR-', '').replace('Neural', '');
 
   // Formato compacto: "1×" "1.5×" "0.75×"
   const speedLabel = (Number.isInteger(speed) ? `${speed}` : `${speed}`) + '×';
@@ -626,11 +658,44 @@ function Player({ coverId, chapter, page, totalPages, elapsed, total, pct, isPla
             <Text style={styles.skipNum}>10</Text>
           </Pressable>
 
+          <Pressable onPress={() => setVoiceOpen(true)} style={styles.voiceBtn} hitSlop={4}>
+            <Text style={styles.speedBtnText} numberOfLines={1}>{voiceLabel}</Text>
+          </Pressable>
+
           <Pressable onPress={() => setSpeedOpen(true)} style={styles.speedBtn} hitSlop={4}>
             <Text style={styles.speedBtnText}>{speedLabel}</Text>
           </Pressable>
         </View>
       </BlurView>
+
+      {/* Modal de seleção de voz — mesmo padrão da velocidade */}
+      <Modal
+        visible={voiceOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setVoiceOpen(false)}
+      >
+        <Pressable style={styles.sheetBackdrop} onPress={() => setVoiceOpen(false)}>
+          <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
+            <Text style={styles.sheetTitle}>Voz</Text>
+            {voices.map(v => {
+              const active = voice === v.name;
+              return (
+                <Pressable
+                  key={v.name}
+                  onPress={() => { onVoiceChange(v.name); setVoiceOpen(false); }}
+                  style={({ pressed }) => [styles.sheetItem, pressed && styles.sheetItemPressed]}
+                >
+                  <Text style={[styles.sheetItemText, active && styles.sheetItemActive]}>
+                    {v.label}
+                  </Text>
+                  {active ? <Text style={styles.sheetCheck}>✓</Text> : null}
+                </Pressable>
+              );
+            })}
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       {/* Modal de seleção de velocidade */}
       <Modal
@@ -815,6 +880,15 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.08)',
     borderWidth: 0.5, borderColor: 'rgba(255,255,255,0.12)',
     alignItems: 'center', justifyContent: 'center',
+  },
+  voiceBtn: {
+    height: 28, minWidth: 62,
+    paddingHorizontal: 10,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderWidth: 0.5, borderColor: 'rgba(255,255,255,0.12)',
+    alignItems: 'center', justifyContent: 'center',
+    marginRight: 6,
   },
   speedBtnText: {
     color: 'white',

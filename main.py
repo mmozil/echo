@@ -9,6 +9,7 @@ que aquele id existe, o que já é vazamento de informação.
 
 import os
 import re
+import glob
 import uuid
 import shutil
 import asyncio
@@ -25,6 +26,7 @@ from src.database import init_db, create_document, list_documents, get_document_
 from src.database import count_documents_with_filename, get_chunk_owner
 from src.database import save_chunk, get_chunks, get_chunk, update_chunk_audio, update_progress, get_progress
 from src.database import create_user, create_or_update_user, authenticate_user, create_session, get_user_by_session, delete_session, reset_user_password, list_users
+from src.database import get_user_voice, set_user_voice
 from src.pdf_parser import extract_text_from_pdf, chunk_pages, get_pdf_info, extract_cover, render_page, get_toc, get_word_positions_on_page
 
 # Logging
@@ -34,7 +36,7 @@ logger = logging.getLogger("echo")
 PAGES_DIR = os.environ.get("PAGES_DIR", "/app/data/pages")
 
 COVERS_DIR = os.environ.get("COVERS_DIR", "/app/data/covers")
-from src.tts_service import generate_audio, generate_audio_stream, list_voices
+from src.tts_service import generate_audio, generate_audio_stream, list_voices, voz_valida, NOMES_VALIDOS
 
 UPLOAD_DIR = os.environ.get("UPLOAD_DIR", "/app/data/uploads")
 AUDIO_DIR = os.environ.get("AUDIO_DIR", "/app/data/audio")
@@ -86,6 +88,17 @@ def require_auth(request: Request) -> dict:
     if not user:
         raise HTTPException(401, "Não autenticado")
     return user
+
+
+def voz_do_usuario(user: dict, pedida: str = "") -> str:
+    """Voz a usar: a pedida na chamada, senão a salva na conta, senão a padrão.
+
+    Um lugar só decide isso — se cada rota resolvesse por conta própria, uma
+    delas acabaria gerando áudio na voz errada, e o cache guardaria o engano.
+    """
+    if pedida:
+        return voz_valida(pedida)
+    return voz_valida(user.get("voice"))
 
 
 def require_doc(request: Request, doc_id: str) -> tuple[dict, dict]:
@@ -344,7 +357,8 @@ async def me(request: Request):
     user = get_current_user(request)
     if not user:
         raise HTTPException(401, "Não autenticado")
-    return {"id": user["id"], "name": user["name"], "email": user["email"]}
+    return {"id": user["id"], "name": user["name"], "email": user["email"],
+            "voice": voz_do_usuario(user)}
 
 
 @app.post("/api/auth/logout")
@@ -481,8 +495,8 @@ async def upload_document(request: Request, file: UploadFile = File(...)):
     has_cover = extract_cover(file_path, cover_path)
     logger.info("UPLOAD %s — user=%s cover=%s path=%s", doc_id, user["id"], has_cover, cover_path)
 
-    # Pré-gerar áudio de TODOS os chunks em background
-    asyncio.create_task(_pregenerate_all_audio(doc_id))
+    # Pré-gerar áudio de TODOS os chunks em background, na voz do dono
+    asyncio.create_task(_pregenerate_all_audio(doc_id, voz_do_usuario(user)))
 
     return {
         "id": doc_id,
@@ -494,12 +508,12 @@ async def upload_document(request: Request, file: UploadFile = File(...)):
     }
 
 
-async def _pregenerate_all_audio(doc_id: str):
-    """Pré-gera áudio de todos os chunks em background."""
+async def _pregenerate_all_audio(doc_id: str, voice: str = ""):
+    """Pré-gera áudio de todos os chunks em background, na voz escolhida."""
     chunks = get_chunks(doc_id)
     for chunk in chunks:
         try:
-            await generate_audio(chunk["text_content"], chunk["id"])
+            await generate_audio(chunk["text_content"], chunk["id"], voice=voice or None)
         except Exception:
             pass  # Continuar mesmo se um falhar
 
@@ -527,7 +541,7 @@ async def get_document_detail(doc_id: str, request: Request):
 
     # Se nenhum chunk tem áudio, disparar pré-geração
     if ready == 0:
-        asyncio.create_task(_pregenerate_all_audio(doc_id))
+        asyncio.create_task(_pregenerate_all_audio(doc_id, voz_do_usuario(user)))
 
     return {
         "document": doc,
@@ -553,9 +567,17 @@ async def get_document_detail(doc_id: str, request: Request):
 async def remove_document(doc_id: str, request: Request):
     user, doc = require_doc(request, doc_id)
 
-    # Remover arquivos de áudio
+    # Remover o áudio de TODAS as vozes já geradas para este documento.
+    # chunks.audio_path guarda só o último gerado; como o nome do arquivo é
+    # {chunk_id}_{hash-que-inclui-a-voz}, apagar só o registrado deixaria os
+    # MP3 das outras vozes órfãos no disco para sempre.
     chunks = get_chunks(doc_id)
     for c in chunks:
+        for arquivo in glob.glob(os.path.join(AUDIO_DIR, f"{c['id']}_*")):
+            try:
+                os.remove(arquivo)
+            except OSError:
+                pass
         if c["audio_path"] and os.path.exists(c["audio_path"]):
             os.remove(c["audio_path"])
 
@@ -595,12 +617,13 @@ async def generate_chunk_audio(
     pitch: str = Query(default="+0Hz", description="Tom: -50Hz a +50Hz"),
     voice: str = Query(default="", description="Voz (ex: pt-BR-AntonioNeural)"),
 ):
-    require_doc(request, doc_id)
+    user, _ = require_doc(request, doc_id)
     chunk = get_chunk(doc_id, chunk_index)
     if not chunk:
         raise HTTPException(404, "Chunk não encontrado")
 
-    result = await generate_audio(chunk["text_content"], chunk["id"], rate=rate, pitch=pitch, voice=voice or None)
+    usada = voz_do_usuario(user, voice)
+    result = await generate_audio(chunk["text_content"], chunk["id"], rate=rate, pitch=pitch, voice=usada)
 
     if not result["cached"]:
         # Estimar duração (~150 palavras/min para pt-BR)
@@ -623,6 +646,7 @@ async def generate_chunk_audio(
         "cached": result["cached"],
         "chunk_index": chunk_index,
         "page": chunk["page_number"],
+        "voice": usada,
     }
 
 
@@ -636,13 +660,14 @@ async def stream_chunk_audio(
     rate: str = Query(default="+0%"),
     pitch: str = Query(default="+0Hz"),
 ):
-    require_doc(request, doc_id)
+    user, _ = require_doc(request, doc_id)
     chunk = get_chunk(doc_id, chunk_index)
     if not chunk:
         raise HTTPException(404, "Chunk não encontrado")
 
     return StreamingResponse(
-        generate_audio_stream(chunk["text_content"], rate=rate, pitch=pitch),
+        generate_audio_stream(chunk["text_content"], rate=rate, pitch=pitch,
+                              voice=voz_do_usuario(user)),
         media_type="audio/mpeg",
         headers={
             "Content-Disposition": f"inline; filename=chunk_{chunk_index}.mp3",
@@ -706,8 +731,27 @@ async def save_progress(doc_id: str, request: Request,
 
 # --- Listar vozes disponíveis ---
 
+class VozRequest(BaseModel):
+    voice: str
+
+
 @app.get("/api/voices")
 async def get_voices(request: Request, language: str = Query(default="pt-BR")):
-    require_auth(request)
+    """As três vozes pt-BR e a que está escolhida nesta conta."""
+    user = require_auth(request)
     voices = await list_voices(language)
-    return {"voices": voices}
+    return {"voices": voices, "selected": voz_do_usuario(user)}
+
+
+@app.put("/api/voices/selected")
+async def set_voice(body: VozRequest, request: Request):
+    """Troca a voz da CONTA — vale na web e no app, e sobrevive ao logout.
+
+    Não apaga áudio nenhum: o MP3 de cada voz tem nome próprio, então voltar
+    para a voz anterior reaproveita o que já existe em vez de gerar de novo.
+    """
+    user = require_auth(request)
+    if body.voice not in NOMES_VALIDOS:
+        raise HTTPException(400, "Voz não disponível")
+    set_user_voice(user["id"], body.voice)
+    return {"ok": True, "voice": body.voice}

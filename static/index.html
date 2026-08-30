@@ -763,6 +763,7 @@ async function initApp() {
         return;
     }
     // 2. Auth OK — carregar dados
+    loadVoices();
     await loadDocuments();
     setupDragDrop();
     // 3. Restaurar estado via URL hash (#doc/{id})
@@ -1175,7 +1176,7 @@ function showScrollToListening() {
 // === AUDIO ===
 async function togglePlay() { if(isPlaying) pauseAudio(); else await playCurrentChunk(); }
 
-async function playCurrentChunk() {
+async function playCurrentChunk(fracaoInicial = 0) {
     if (!currentDoc) return;
     stopHighlightLoop();
     lastPdfHighlightIdx = -1; // Reset highlight tracking
@@ -1185,7 +1186,7 @@ async function playCurrentChunk() {
     try {
         let data;
         if (prefetchCache[currentChunkIndex]) { data = prefetchCache[currentChunkIndex]; delete prefetchCache[currentChunkIndex]; }
-        else { const r = await fetch(`/api/documents/${currentDoc.id}/chunks/${currentChunkIndex}/audio`,{method:'POST'}); data = await r.json(); if(!data.audio_url) throw new Error(data.detail||'Erro'); }
+        else { const r = await fetch(`/api/documents/${currentDoc.id}/chunks/${currentChunkIndex}/audio?voice=${encodeURIComponent(selectedVoice)}`,{method:'POST'}); data = await r.json(); if(!data.audio_url) throw new Error(data.detail||'Erro'); }
 
         wordBoundaries = data.boundaries || [];
         _sentenceRanges = [];
@@ -1200,6 +1201,16 @@ async function playCurrentChunk() {
 
         audio.src = data.audio_url;
         audio.playbackRate = currentSpeed;
+        if (fracaoInicial > 0) {
+            // A voz nova tem duração própria — retomar pela fração do trecho é
+            // o mais perto do ponto onde a pessoa estava.
+            await new Promise(r => {
+                if (audio.readyState >= 1) return r();
+                audio.addEventListener('loadedmetadata', r, { once: true });
+                setTimeout(r, 3000);
+            });
+            if (audio.duration) audio.currentTime = fracaoInicial * audio.duration;
+        }
         await audio.play();
         isPlaying = true;
         showPlayLoading(false);
@@ -1224,7 +1235,7 @@ async function playCurrentChunk() {
 function prefetchAhead(fromIdx) {
     for (let i = fromIdx + 1; i <= Math.min(fromIdx + 5, currentChunks.length - 1); i++) {
         if (!prefetchCache[i]) {
-            fetch(`/api/documents/${currentDoc.id}/chunks/${i}/audio`,{method:'POST'}).then(r=>r.json()).then(d=>{if(d.audio_url) prefetchCache[i]=d;}).catch(()=>{});
+            fetch(`/api/documents/${currentDoc.id}/chunks/${i}/audio?voice=${encodeURIComponent(selectedVoice)}`,{method:'POST'}).then(r=>r.json()).then(d=>{if(d.audio_url) prefetchCache[i]=d;}).catch(()=>{});
         }
     }
 }
@@ -1440,16 +1451,46 @@ function skipBack() { if(audio.src) audio.currentTime = Math.max(0, audio.curren
 function skipForward() { if(audio.src) audio.currentTime = Math.min(audio.duration || 0, audio.currentTime + 10); }
 
 let voiceList = [], voiceIdx = 0, selectedVoice = 'pt-BR-AntonioNeural';
+
+// Troca a voz DURANTE a leitura: o botão fica na mesma barra da velocidade,
+// que é onde a mão já está. Cada toque passa para a próxima das três.
 async function cycleVoice() {
-    if (!voiceList.length) { const r = await fetch('/api/voices?language=pt-BR'); const d = await r.json(); voiceList = d.voices || []; }
+    if (!voiceList.length) await loadVoices();
     if (!voiceList.length) return;
     voiceIdx = (voiceIdx + 1) % voiceList.length;
     selectedVoice = voiceList[voiceIdx].name;
+
+    // 🚨 O trecho seguinte já estava baixado NA VOZ ANTIGA. Sem limpar,
+    // continuaríamos ouvindo a voz de antes e pareceria que a troca falhou.
     prefetchCache = {};
-    const name = selectedVoice.replace('pt-BR-','').replace('Neural','');
+
+    aplicaRotuloDaVoz();
+    showToast('Voz: ' + rotuloDaVoz(selectedVoice));
+
+    // Preferência é da conta, não do navegador: vale no app e após o logout.
+    fetch('/api/voices/selected', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ voice: selectedVoice }),
+    }).catch(() => {});
+
+    // Retoma o mesmo trecho na voz nova, guardando o ponto da leitura.
+    if (audio.src) {
+        const fracao = audio.duration ? (audio.currentTime / audio.duration) : 0;
+        const estavaTocando = isPlaying;
+        await playCurrentChunk(fracao);
+        if (!estavaTocando) pauseAudio();
+    }
+}
+
+function rotuloDaVoz(nome) {
+    const v = voiceList.find(x => x.name === nome);
+    return v ? (v.label || v.name) : nome.replace('pt-BR-', '').replace('Neural', '');
+}
+
+function aplicaRotuloDaVoz() {
     const vn = document.getElementById('voiceName');
-    if (vn) vn.textContent = name;
-    showToast(`Voz: ${name}`);
+    if (vn) vn.textContent = rotuloDaVoz(selectedVoice);
 }
 
 function updateChapterDisplay() {
@@ -1966,7 +2007,7 @@ async function handlePageClick(pageNum, relX, relY) {
 
         let data;
         if (prefetchCache[currentChunkIndex]) { data = prefetchCache[currentChunkIndex]; delete prefetchCache[currentChunkIndex]; }
-        else { const r = await fetch(`/api/documents/${currentDoc.id}/chunks/${currentChunkIndex}/audio`, {method:'POST'}); data = await r.json(); }
+        else { const r = await fetch(`/api/documents/${currentDoc.id}/chunks/${currentChunkIndex}/audio?voice=${encodeURIComponent(selectedVoice)}`, {method:'POST'}); data = await r.json(); }
 
         wordBoundaries = data.boundaries || [];
         _sentenceRanges = [];
@@ -2061,7 +2102,7 @@ async function handleTextLayerClick(pageNum, clickedSpan, textLayerDiv) {
         // 7) Obter áudio + boundaries
         let data;
         if (prefetchCache[currentChunkIndex]) { data = prefetchCache[currentChunkIndex]; delete prefetchCache[currentChunkIndex]; }
-        else { const r = await fetch(`/api/documents/${currentDoc.id}/chunks/${currentChunkIndex}/audio`, {method:'POST'}); data = await r.json(); }
+        else { const r = await fetch(`/api/documents/${currentDoc.id}/chunks/${currentChunkIndex}/audio?voice=${encodeURIComponent(selectedVoice)}`, {method:'POST'}); data = await r.json(); }
 
         wordBoundaries = data.boundaries || [];
         _sentenceRanges = [];
@@ -2116,6 +2157,10 @@ async function loadVoices() {
         const r = await fetch('/api/voices?language=pt-BR');
         const d = await r.json();
         voiceList = d.voices || [];
+        if (d.selected) selectedVoice = d.selected;
+        const i = voiceList.findIndex(v => v.name === selectedVoice);
+        if (i >= 0) voiceIdx = i;
+        aplicaRotuloDaVoz();
     } catch {}
 }
 
@@ -2124,7 +2169,7 @@ async function prefetchChunks(startIdx, count) {
     for (let i = startIdx; i < Math.min(startIdx + count, currentChunks.length); i++) {
         if (prefetchCache[i]) continue;
         try {
-            const r = await fetch(`/api/documents/${currentDoc.id}/chunks/${i}/audio`, {method:'POST'});
+            const r = await fetch(`/api/documents/${currentDoc.id}/chunks/${i}/audio?voice=${encodeURIComponent(selectedVoice)}`, {method:'POST'});
             const d = await r.json();
             if (d.audio_url) prefetchCache[i] = d;
         } catch {}

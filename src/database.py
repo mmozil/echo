@@ -102,11 +102,25 @@ def _colunas(conn, tabela: str) -> set[str]:
 
 
 def _migrar_schema(conn):
+    _migrar_users_voice(conn)
     _migrar_documents_user_id(conn)
     _adotar_documentos_orfaos(conn)
     _migrar_reading_progress_por_usuario(conn)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_documents_user ON documents(user_id)")
     conn.commit()
+
+
+def _migrar_users_voice(conn):
+    """Voz escolhida vive na CONTA, não no navegador.
+
+    O dono quer a mesma voz na web e no app, e localStorage não atravessa
+    aparelho nem sobrevive a um logout. Fica NULL para quem nunca escolheu.
+    """
+    if "voice" in _colunas(conn, "users"):
+        return
+    conn.execute("ALTER TABLE users ADD COLUMN voice TEXT")
+    conn.commit()
+    logger.warning("MIGRACAO: coluna users.voice criada")
 
 
 def _migrar_documents_user_id(conn):
@@ -286,10 +300,25 @@ def create_session(user_id: str) -> str:
     return token
 
 
+def get_user_voice(user_id: str) -> str | None:
+    conn = get_db()
+    row = conn.execute("SELECT voice FROM users WHERE id = ?", (user_id,)).fetchone()
+    conn.close()
+    return row["voice"] if row else None
+
+
+def set_user_voice(user_id: str, voice: str):
+    conn = get_db()
+    conn.execute("UPDATE users SET voice = ? WHERE id = ?", (voice, user_id))
+    conn.commit()
+    conn.close()
+    logger.info("Voz de %s agora e %s", user_id, voice)
+
+
 def get_user_by_session(token: str) -> dict | None:
     conn = get_db()
     row = conn.execute("""
-        SELECT u.id, u.name, u.email FROM users u
+        SELECT u.id, u.name, u.email, u.voice FROM users u
         JOIN sessions s ON u.id = s.user_id
         WHERE s.token = ?
     """, (token,)).fetchone()
