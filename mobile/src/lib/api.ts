@@ -1,6 +1,7 @@
 // Cliente API do Echo — fala com FastAPI em https://echo.hovio.com.br
 import axios from 'axios';
 import * as SecureStore from 'expo-secure-store';
+import { router } from 'expo-router';
 
 export const API_BASE = 'https://echo.hovio.com.br';
 
@@ -39,8 +40,11 @@ api.interceptors.response.use(
   (r) => r,
   async (err) => {
     if (err.response?.status === 401) {
+      // A sessão vence (30 dias, renovados pelo uso). Sem mandar para o login
+      // aqui, o app ficaria numa tela de leitura que não carrega mais nada.
       tokenEmMemoria = null;
-      await SecureStore.deleteItemAsync('echo_token');
+      await SecureStore.deleteItemAsync('echo_token').catch(() => {});
+      try { router.replace('/login'); } catch {}
     }
     return Promise.reject(err);
   }

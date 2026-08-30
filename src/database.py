@@ -22,6 +22,10 @@ logger = logging.getLogger("echo.db")
 
 DB_PATH = os.environ.get("DB_PATH", "/app/data/echo.db")
 
+# A sessao vale 30 dias e o USO renova (janela deslizante). Antes nao vencia
+# nunca: token vazado valia para sempre.
+SESSAO_DIAS = int(os.environ.get("ECHO_SESSAO_DIAS", "30"))
+
 
 def get_db():
     conn = sqlite3.connect(DB_PATH)
@@ -89,6 +93,7 @@ def init_db():
     """)
     conn.commit()
     _migrar_schema(conn)
+    _apagar_sessoes_vencidas(conn)
     conn.close()
 
 
@@ -102,12 +107,34 @@ def _colunas(conn, tabela: str) -> set[str]:
 
 
 def _migrar_schema(conn):
+    _migrar_sessions_expiracao(conn)
     _migrar_users_voice(conn)
     _migrar_documents_user_id(conn)
     _adotar_documentos_orfaos(conn)
     _migrar_reading_progress_por_usuario(conn)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_documents_user ON documents(user_id)")
     conn.commit()
+
+
+def _migrar_sessions_expiracao(conn):
+    """Da prazo as sessoes — inclusive as que ja existiam.
+
+    As antigas ganham prazo A PARTIR DE AGORA, nao do created_at: quase todas
+    as 49 que existiam ja passavam de 30 dias de idade, e contar do created_at
+    deslogaria o dono da web e do app no segundo do deploy, sem ele entender
+    por que. Contando de agora o risco antigo tambem morre — so que em 30
+    dias, e sem derrubar ninguem no meio da leitura.
+    """
+    if "expires_at" in _colunas(conn, "sessions"):
+        return
+    conn.execute("ALTER TABLE sessions ADD COLUMN expires_at TEXT")
+    conn.execute(
+        "UPDATE sessions SET expires_at = datetime('now', ?) WHERE expires_at IS NULL",
+        (f"+{SESSAO_DIAS} days",),
+    )
+    conn.commit()
+    n = conn.execute("SELECT COUNT(*) FROM sessions").fetchone()[0]
+    logger.warning("MIGRACAO: sessions.expires_at criada — %d sessao(oes) com prazo a partir de agora", n)
 
 
 def _migrar_users_voice(conn):
@@ -291,11 +318,27 @@ def list_users() -> list[dict]:
     return [dict(r) for r in rows]
 
 
+def _apagar_sessoes_vencidas(conn=None) -> int:
+    proprio = conn is None
+    conn = conn or get_db()
+    cur = conn.execute("DELETE FROM sessions WHERE expires_at IS NOT NULL AND expires_at <= datetime('now')")
+    conn.commit()
+    if cur.rowcount:
+        logger.info("Sessoes vencidas removidas: %d", cur.rowcount)
+    if proprio:
+        conn.close()
+    return cur.rowcount
+
+
 def create_session(user_id: str) -> str:
     token = secrets.token_urlsafe(32)
     conn = get_db()
-    conn.execute("INSERT INTO sessions (token, user_id) VALUES (?, ?)", (token, user_id))
+    conn.execute(
+        "INSERT INTO sessions (token, user_id, expires_at) VALUES (?, ?, datetime('now', ?))",
+        (token, user_id, f"+{SESSAO_DIAS} days"),
+    )
     conn.commit()
+    _apagar_sessoes_vencidas(conn)
     conn.close()
     return token
 
@@ -316,14 +359,36 @@ def set_user_voice(user_id: str, voice: str):
 
 
 def get_user_by_session(token: str) -> dict | None:
+    """Resolve a sessao E renova o prazo (janela deslizante).
+
+    A validacao mora aqui, na LEITURA, e nao so na criacao: este e o unico
+    ponto por onde toda requisicao autenticada passa. Quem le todo dia nunca
+    e deslogado; quem sumiu por 30 dias perde a sessao.
+    """
     conn = get_db()
     row = conn.execute("""
         SELECT u.id, u.name, u.email, u.voice FROM users u
         JOIN sessions s ON u.id = s.user_id
         WHERE s.token = ?
+          AND (s.expires_at IS NULL OR s.expires_at > datetime('now'))
     """, (token,)).fetchone()
+
+    if not row:
+        # Vencida sai do banco na hora — credencial morta nao fica viva
+        conn.execute("DELETE FROM sessions WHERE token = ? AND expires_at <= datetime('now')", (token,))
+        conn.commit()
+        conn.close()
+        return None
+
+    # Renova o prazo, mas no maximo uma escrita por dia por sessao
+    conn.execute(
+        "UPDATE sessions SET expires_at = datetime('now', ?) "
+        "WHERE token = ? AND (expires_at IS NULL OR expires_at < datetime('now', ?))",
+        (f"+{SESSAO_DIAS} days", token, f"+{SESSAO_DIAS - 1} days"),
+    )
+    conn.commit()
     conn.close()
-    return dict(row) if row else None
+    return dict(row)
 
 
 def delete_session(token: str):

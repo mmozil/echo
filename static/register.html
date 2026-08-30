@@ -116,6 +116,10 @@
                     <label>Senha</label>
                     <input type="password" id="password" placeholder="Min. 6 caracteres" required minlength="6" autocomplete="new-password">
                 </div>
+                <div class="field" id="campoConvite" style="display:none">
+                    <label>Código de convite</label>
+                    <input type="text" id="codigo" placeholder="Cole aqui o código que você recebeu" autocomplete="off">
+                </div>
                 <button class="submit" type="submit" id="btn">Criar conta</button>
             </form>
 
@@ -126,6 +130,23 @@
 
 <script>
 if (localStorage.getItem('echo_token')) window.location.href = '/app';
+
+// Pergunta ANTES de desenhar o formulário se o cadastro está aberto. Quem
+// chega aqui com ele fechado merece uma frase, não um 403 seco depois de
+// digitar nome, e-mail e senha.
+(async function estadoDoCadastro() {
+    try {
+        var r = await fetch('/api/auth/cadastro-status');
+        var d = await r.json();
+        if (d.exige_codigo) document.getElementById('campoConvite').style.display = '';
+        if (!d.aberto) {
+            document.getElementById('registerForm').style.display = 'none';
+            var err = document.getElementById('err');
+            err.textContent = d.mensagem;
+            err.className = 'error show';
+        }
+    } catch (e) { /* sem resposta: deixa tentar e o servidor decide */ }
+})();
 
 document.getElementById('registerForm').onsubmit = async function(e) {
     e.preventDefault();
@@ -142,7 +163,8 @@ document.getElementById('registerForm').onsubmit = async function(e) {
             body: JSON.stringify({
                 name: document.getElementById('name').value,
                 email: document.getElementById('email').value,
-                password: document.getElementById('password').value
+                password: document.getElementById('password').value,
+                codigo: (document.getElementById('codigo') || {}).value || ''
             })
         });
         var d = await r.json();

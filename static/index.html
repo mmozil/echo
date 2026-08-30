@@ -877,11 +877,23 @@ window.alternarPlayer = alternarPlayer;
     const _fetch = window.fetch;
     window.fetch = function(url, opts) {
         const token = localStorage.getItem('echo_token');
-        if (token && typeof url === 'string' && url.startsWith('/api/')) {
+        const daApi = typeof url === 'string' && url.startsWith('/api/');
+        if (token && daApi) {
             opts = Object.assign({}, opts);
             opts.headers = Object.assign({}, opts.headers, { 'Authorization': 'Bearer ' + token });
         }
-        return _fetch.call(this, url, opts);
+        const p = _fetch.call(this, url, opts);
+        if (!daApi) return p;
+        // A sessão agora VENCE (30 dias, renovados pelo uso). Se vencer no meio
+        // da leitura, cai aqui: em vez de a tela quebrar aos poucos com erro em
+        // cada chamada, a pessoa volta ao login uma vez só.
+        return p.then(function (r) {
+            if (r.status === 401 && !String(url).includes('/api/auth/')) {
+                localStorage.removeItem('echo_token');
+                window.location.href = '/login';
+            }
+            return r;
+        });
     };
 })();
 

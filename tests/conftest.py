@@ -22,6 +22,9 @@ os.environ["AUDIO_DIR"] = str(_TMP / "audio")
 os.environ["COVERS_DIR"] = str(_TMP / "covers")
 os.environ["PAGES_DIR"] = str(_TMP / "pages")
 os.environ.pop("ECHO_ADMIN_KEY", None)
+# O cadastro nasce FECHADO em producao; a suite cria usuarios o tempo todo,
+# entao aqui ele fica aberto e quem testa o portao mexe na env com monkeypatch.
+os.environ["ECHO_CADASTRO"] = "aberto"
 
 import fitz  # noqa: E402  (PyMuPDF)
 from fastapi.testclient import TestClient  # noqa: E402

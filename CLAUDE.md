@@ -99,6 +99,57 @@ de todo mundo. Hoje:
   trocava a senha da vítima e entrava na conta dela.
 - Testes: `pytest tests/ -q` (deps em `requirements-dev.txt`).
 
+### Cadastro fechado por padrão (08/2026)
+
+Qualquer pessoa criava conta em `echo.hovio.com.br` e gastava disco e CPU com
+upload e TTS. Agora quem manda é a env **`ECHO_CADASTRO`**, e **sem ela o
+cadastro fica FECHADO** — em produção ela não está definida, então ninguém abre
+conta nova. **Login não é afetado: quem já tem conta entra normalmente.**
+
+| `ECHO_CADASTRO` | O que acontece |
+|---|---|
+| ausente / `fechado` | `POST /api/auth/register` devolve **403** com frase explicando |
+| `convite` | exige `codigo` igual a **`ECHO_CONVITE_CODIGO`** (env vazia = ninguém entra) |
+| `aberto` | como era antes |
+
+`GET /api/auth/cadastro-status` é público e diz o modo — o `register.html`
+pergunta antes de desenhar o formulário: com o cadastro fechado ele **esconde o
+formulário e mostra a frase**, em vez de deixar a pessoa digitar tudo para levar
+um 403 seco; no modo convite ele mostra o campo do código.
+
+**🔑 Como criar uma conta depois (dois caminhos, sem trancar ninguém para fora):**
+
+1. **Sem redeploy** — direto no container, o mais rápido:
+   ```bash
+   ssh root@46.224.220.223
+   C=$(docker ps --filter name=iws04 --format '{{.Names}}' | head -1)
+   docker exec -i $C python -c "from src.database import create_user; print(create_user('Nome da Pessoa','email@dominio','senhaSegura'))"
+   ```
+   Imprime o `user_id`. Se o e-mail já existir, imprime `None` (não sobrescreve).
+2. **Por convite, pelo Coolify** — adicionar `ECHO_CADASTRO=convite` e
+   `ECHO_CONVITE_CODIGO=<código>` nas env vars do app `iws04g0kow8w44o40ocsw4s0`,
+   redeploy, mandar o código para a pessoa, e depois voltar `ECHO_CADASTRO`
+   para `fechado` (ou remover a env) e redeployar.
+
+### Sessão com prazo (08/2026)
+
+Antes nenhuma sessão vencia — eram 49 tokens vivos, e um token vazado valia para
+sempre. Agora: **30 dias com janela deslizante** (`ECHO_SESSAO_DIAS` muda o
+prazo). O uso renova, então quem lê todo dia nunca é deslogado.
+
+- A validação acontece na **leitura** da sessão (`get_user_by_session`), não só
+  na criação: é o único ponto por onde toda requisição autenticada passa.
+- Renovação com no máximo **uma escrita por dia** por sessão.
+- Sessão vencida sai do banco na hora, e o **401 devolve `Set-Cookie` apagando o
+  `echo_session`** — senão o navegador segue mandando credencial que o servidor
+  recusa, e a tela não sabe explicar (o limbo clássico de sessão expirada).
+- Web e mobile mandam para o **login** ao receber 401 (interceptor de `fetch` no
+  `index.html`, interceptor do axios em `mobile/src/lib/api.ts`).
+- 🚨 **As sessões que já existiam ganharam prazo a partir da migração, não do
+  `created_at`.** Contar do `created_at` deslogaria o dono da web e do app no
+  segundo do deploy — quase todas passavam de 30 dias. Contando de agora, o
+  risco antigo morre igual, só que sem derrubar ninguém no meio da leitura.
+
 ### Vozes (3 pt-BR, escolha por conta)
 
 `VOZES_PT_BR` em `src/tts_service.py` — **Francisca**, **Antônio**, **Thalita**.
@@ -146,6 +197,7 @@ nem oferecer voz que o resto do código recusa (`voz_valida()`).
 | POST | `/api/auth/register` | - | Registro → retorna token |
 | GET | `/api/auth/me` | Bearer | Info do user logado |
 | POST | `/api/auth/logout` | Bearer | Destroi sessão |
+| GET | `/api/auth/cadastro-status` | - | Diz se o cadastro está aberto/convite/fechado |
 | POST | `/api/auth/session-cookie` | Bearer | Reemite o cookie de sessão (mídia) |
 | POST | `/api/documents` | dono | Upload PDF (multipart) |
 | GET | `/api/documents` | dono | Listar biblioteca (só a do usuário) |

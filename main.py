@@ -83,10 +83,16 @@ def get_current_user(request: Request) -> dict | None:
     return user
 
 
+# Quando a sessão morre, o cookie tem de morrer junto. Sem isto o navegador
+# segue mandando uma credencial que o servidor recusa, e a tela não sabe
+# explicar por que nada funciona — o limbo clássico de sessão expirada.
+_APAGA_COOKIE = {"set-cookie": "echo_session=; Max-Age=0; Path=/; HttpOnly; SameSite=lax"}
+
+
 def require_auth(request: Request) -> dict:
     user = get_current_user(request)
     if not user:
-        raise HTTPException(401, "Não autenticado")
+        raise HTTPException(401, "Sessão expirada ou inválida", headers=_APAGA_COOKIE)
     return user
 
 
@@ -283,6 +289,32 @@ class RegisterRequest(BaseModel):
     name: str
     email: str
     password: str
+    codigo: str = ""
+
+
+# Cadastro FECHADO por padrão: sem a env, ninguém abre conta nova. Antes
+# qualquer pessoa criava conta aqui e gastava disco e CPU com upload e TTS.
+# Isto não afeta quem já tem conta — login segue igual.
+#   ECHO_CADASTRO=fechado (padrão) | convite | aberto
+#   ECHO_CONVITE_CODIGO=<código>   (obrigatório no modo convite)
+def modo_cadastro() -> str:
+    modo = (os.environ.get("ECHO_CADASTRO", "fechado") or "fechado").strip().lower()
+    return modo if modo in ("fechado", "convite", "aberto") else "fechado"
+
+
+def _conferir_cadastro(codigo: str):
+    modo = modo_cadastro()
+    if modo == "aberto":
+        return
+    if modo == "convite":
+        esperado = os.environ.get("ECHO_CONVITE_CODIGO", "")
+        if esperado and secrets_compare(codigo, esperado):
+            return
+        raise HTTPException(403, "Código de convite inválido.")
+    raise HTTPException(
+        403,
+        "O cadastro está fechado no momento. Se você já tem conta, é só entrar.",
+    )
 
 
 class LoginRequest(BaseModel):
@@ -304,8 +336,29 @@ def _set_session_cookie(request: Request, response: Response, token: str):
     )
 
 
+@app.get("/api/auth/cadastro-status")
+async def cadastro_status():
+    """A tela de cadastro pergunta isto antes de desenhar o formulário.
+
+    Quem chega ali com o cadastro fechado merece uma frase explicando, não um
+    403 seco depois de digitar nome, e-mail e senha.
+    """
+    modo = modo_cadastro()
+    return {
+        "modo": modo,
+        "aberto": modo in ("aberto", "convite"),
+        "exige_codigo": modo == "convite",
+        "mensagem": {
+            "fechado": "O cadastro está fechado no momento. Se você já tem conta, é só entrar.",
+            "convite": "O cadastro é por convite. Informe o código que você recebeu.",
+            "aberto": "",
+        }[modo],
+    }
+
+
 @app.post("/api/auth/register")
 async def register(body: RegisterRequest, request: Request, response: Response):
+    _conferir_cadastro(body.codigo)
     if len(body.password) < 6:
         raise HTTPException(400, "Senha deve ter pelo menos 6 caracteres")
     if not body.name.strip():
@@ -354,9 +407,7 @@ async def refresh_session_cookie(request: Request, response: Response):
 
 @app.get("/api/auth/me")
 async def me(request: Request):
-    user = get_current_user(request)
-    if not user:
-        raise HTTPException(401, "Não autenticado")
+    user = require_auth(request)
     return {"id": user["id"], "name": user["name"], "email": user["email"],
             "voice": voz_do_usuario(user)}
 
