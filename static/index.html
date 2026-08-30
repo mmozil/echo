@@ -169,163 +169,255 @@
         .text-view .word.active-sentence { background: var(--highlight); padding: 1px 2px; border-radius: 3px; }
         .text-view .word.spoken { color: var(--ink); }
 
-        /* === PLAYER (Apple Books / Audible inspired) === */
-        .player-bar { flex-shrink: 0; padding: 0 16px 16px; pointer-events: none; transition: opacity 0.3s, transform 0.3s; }
-        .player-bar.auto-hidden { opacity: 0; transform: translateY(10px); pointer-events: none; }
-        .player-bar:hover { opacity: 1 !important; transform: translateY(0) !important; }
+        /* === PLAYER ===============================================
+           A pílula tem LARGURA DE CONTEÚDO e flutua sobre o texto — não é
+           rodapé de ponta a ponta. Esticada até 1400px numa tela de 1440 os
+           elementos ficam ilhados e o progresso vira um fio de um metro:
+           o problema era a largura, não o acabamento.
+
+           Dois estados: recolhido (só um botão de 56px com o progresso em
+           anel) e expandido (a pílula inteira). Desenho portado do player do
+           app — tudo em pílula, voz e velocidade abrindo folha, nunca
+           <select> nativo (desenha com o chrome do sistema) nem emoji de
+           bandeira (o Windows não tem o glifo e escreve "BR").
+           ========================================================== */
+        .player-bar {
+            flex-shrink: 0;
+            padding: 0 16px 18px;
+            pointer-events: none;
+            display: flex; justify-content: center;
+        }
+        /* 🚨 AUTO-HIDE × RECOLHER: o gesto do usuário ganha do temporizador.
+           O auto-hide só age na pílula EXPANDIDA; o botão recolhido nunca
+           some sozinho — senão a pessoa recolhe, o tempo esconde o resto, e
+           ela fica sem porta de volta na tela. */
+        .player-bar.auto-hidden .player-pill { opacity: 0; transform: translateY(10px); pointer-events: none; }
+        .player-bar:hover .player-pill { opacity: 1 !important; transform: none !important; }
+
         .player-pill {
             pointer-events: all;
-            background: rgba(20, 20, 22, 0.78);
+            width: 100%;
+            max-width: 560px;
+            background: rgba(20, 20, 22, 0.80);
             backdrop-filter: blur(40px) saturate(180%);
             -webkit-backdrop-filter: blur(40px) saturate(180%);
             color: white;
-            border-radius: 22px;
-            max-width: 580px;
-            margin: 0 auto;
-            box-shadow: 0 16px 48px rgba(0,0,0,0.4), 0 1px 0 rgba(255,255,255,0.08) inset;
-            overflow: hidden;
+            border-radius: 20px;
+            padding: 10px 12px 11px;
+            display: flex; flex-direction: column; gap: 7px;
+            box-shadow: 0 16px 44px rgba(0,0,0,0.42), 0 1px 0 rgba(255,255,255,0.08) inset;
             border: 0.5px solid rgba(255,255,255,0.1);
+            transform-origin: bottom center;
+            transition: opacity 0.3s, transform 0.3s;
+            animation: ppCresce 0.22s cubic-bezier(.2,.9,.3,1);
         }
         @supports not (backdrop-filter: blur(1px)) {
             .player-pill { background: rgba(20, 20, 22, 0.96); }
         }
+        /* A pílula cresce do botão e volta para ele — muda de tamanho, não pisca */
+        @keyframes ppCresce { from { transform: scale(0.68) translateY(16px); opacity: 0; } to { transform: none; opacity: 1; } }
+        .player-pill.encolhendo { animation: ppEncolhe 0.16s cubic-bezier(.4,0,.6,1) forwards; }
+        @keyframes ppEncolhe { to { transform: scale(0.68) translateY(16px); opacity: 0; } }
 
-        /* Top: progress bar slim */
-        .pp-progress { height: 3px; background: rgba(255,255,255,0.10); cursor: pointer; position: relative; }
-        .pp-progress:hover { height: 6px; }
-        .pp-progress:hover .pfill::after { transform: translateY(-50%) scale(1); opacity: 1; }
-        .pfill { height: 100%; background: linear-gradient(90deg, #6B7AE9, #8C9CFF); transition: width 0.1s linear, height 0.15s; position: relative; border-radius: 0 2px 2px 0; }
-        .pfill::after { content: ''; position: absolute; right: -7px; top: 50%; width: 14px; height: 14px; background: #fff; border-radius: 50%; transform: translateY(-50%) scale(0); opacity: 0; transition: transform 0.15s, opacity 0.15s; box-shadow: 0 2px 6px rgba(0,0,0,0.4); }
-
-        /* Main row: cover | title-stack | play | skip */
-        .pp-main {
-            display: grid;
-            grid-template-columns: auto 1fr auto;
-            align-items: center;
-            gap: 14px;
-            padding: 12px 14px;
+        /* --- Estado recolhido: só o botão --- */
+        .pp-mini {
+            display: none;
+            pointer-events: all;
+            width: 56px; height: 56px; padding: 0;
+            border-radius: 50%; position: relative;
+            background: rgba(20, 20, 22, 0.82);
+            backdrop-filter: blur(30px) saturate(180%);
+            -webkit-backdrop-filter: blur(30px) saturate(180%);
+            border: 0.5px solid rgba(255,255,255,0.12);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.38);
+            color: white; cursor: pointer;
+            align-items: center; justify-content: center;
+            transform-origin: bottom center;
+            animation: ppCresce 0.2s cubic-bezier(.2,.9,.3,1);
         }
+        .pp-mini:active { transform: scale(0.94); }
+        .pp-mini svg.pp-ring { position: absolute; inset: 0; width: 56px; height: 56px; transform: rotate(-90deg); }
+        .pp-ring-bg { fill: none; stroke: rgba(255,255,255,0.16); stroke-width: 2.5; }
+        .pp-ring-fill { fill: none; stroke: #8C9CFF; stroke-width: 2.5; stroke-linecap: round; transition: stroke-dashoffset 0.2s linear; }
+        .pp-mini-icon { display: flex; align-items: center; justify-content: center; }
+        .pp-mini-icon svg { width: 19px; height: 19px; }
+        /* O chevron é o alvo de EXPANDIR; o centro do botão continua sendo
+           play/pause. Dois alvos separados: quem recolheu ainda quer pausar. */
+        .pp-mini-expand {
+            position: absolute; top: -7px; right: -7px;
+            width: 24px; height: 24px; border-radius: 50%;
+            background: rgba(255,255,255,0.92); color: #14141a;
+            border: none; cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            box-shadow: 0 3px 10px rgba(0,0,0,0.3);
+        }
+        .pp-mini-expand svg { width: 13px; height: 13px; }
+        .pp-mini-expand:hover { background: #fff; }
+
+        .player-bar[data-estado="recolhido"] .player-pill { display: none; }
+        .player-bar[data-estado="recolhido"] .pp-mini { display: flex; }
+
+        /* --- Faixa 1: capa | título | controles | voz e velocidade --- */
+        .pp-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 
         .pp-cover {
-            width: 52px; height: 52px;
-            border-radius: 10px;
+            width: 40px; height: 40px;
+            border-radius: 9px;
             background: linear-gradient(135deg, #6B7AE9, #4A5478);
-            background-size: cover;
-            background-position: center;
-            flex-shrink: 0;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.35), 0 0 0 0.5px rgba(255,255,255,0.1) inset;
-            position: relative;
-            overflow: hidden;
+            background-size: cover; background-position: center;
+            flex-shrink: 0; cursor: pointer;
+            box-shadow: 0 3px 10px rgba(0,0,0,0.32), 0 0 0 0.5px rgba(255,255,255,0.1) inset;
+            position: relative; overflow: hidden;
         }
         .pp-cover::after { content: ''; position: absolute; inset: 0; background: linear-gradient(135deg, transparent 50%, rgba(255,255,255,0.06)); border-radius: inherit; }
 
-        .pp-info { min-width: 0; display: flex; flex-direction: column; gap: 3px; cursor: pointer; }
-        .pp-info:hover .pp-chapter { opacity: 0.8; }
+        .pp-info { flex: 1 1 90px; min-width: 0; display: flex; flex-direction: column; gap: 1px; cursor: pointer; }
+        .pp-info:hover .pp-chapter { opacity: 0.85; }
         .pp-chapter {
-            font-size: 14px; font-weight: 600;
-            color: white;
+            font-size: 13px; font-weight: 600; color: white;
             white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-            letter-spacing: -0.2px;
-            line-height: 1.2;
+            letter-spacing: -0.2px; line-height: 1.25;
+        }
+        .pp-meta {
+            font-size: 11px; color: rgba(255,255,255,0.5);
+            font-variant-numeric: tabular-nums;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
         }
         .pp-chapter-meta { display: none; }
-        .pp-meta {
-            display: flex; align-items: center; gap: 8px;
-            font-size: 11.5px;
-            color: rgba(255,255,255,0.55);
-            font-variant-numeric: tabular-nums;
-            letter-spacing: 0.1px;
-            white-space: nowrap; overflow: hidden;
-        }
-        .pp-meta .dot { width: 2.5px; height: 2.5px; border-radius: 50%; background: rgba(255,255,255,0.35); flex-shrink: 0; }
 
-        /* Controls row */
-        .pp-controls { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
-
+        .pp-controls { display: flex; align-items: center; gap: 0; flex-shrink: 0; }
         .pp-skip {
-            width: 38px; height: 38px;
-            border-radius: 50%;
-            background: transparent;
-            border: none;
-            color: rgba(255,255,255,0.9);
-            cursor: pointer;
-            display: flex; align-items: center; justify-content: center;
-            position: relative;
-            transition: all 0.15s;
+            width: 34px; height: 34px; border-radius: 50%;
+            background: transparent; border: none; color: rgba(255,255,255,0.9);
+            cursor: pointer; display: flex; align-items: center; justify-content: center;
+            position: relative; transition: background 0.15s, transform 0.15s;
         }
         .pp-skip:hover { background: rgba(255,255,255,0.1); }
         .pp-skip:active { transform: scale(0.92); }
-        .pp-skip svg { width: 22px; height: 22px; }
+        .pp-skip svg { width: 20px; height: 20px; }
         .pp-skip-num {
-            position: absolute;
-            top: 50%; left: 50%;
+            position: absolute; top: 50%; left: 50%;
             transform: translate(-50%, -50%);
-            font-size: 7.5px; font-weight: 700;
-            font-family: var(--font-b);
-            letter-spacing: -0.4px;
-            line-height: 1;
-            pointer-events: none;
-            color: inherit;
+            font-size: 7px; font-weight: 700; font-family: var(--font-b);
+            letter-spacing: -0.4px; line-height: 1; pointer-events: none; color: inherit;
         }
-
         .play-btn {
-            width: 46px; height: 46px;
-            border-radius: 50%;
-            background: white;
-            border: none;
-            color: #0F0F12;
-            cursor: pointer;
+            width: 40px; height: 40px; border-radius: 50%;
+            background: white; border: none; color: #0F0F12; cursor: pointer;
             display: flex; align-items: center; justify-content: center;
             transition: transform 0.15s cubic-bezier(.4,0,.2,1), background 0.2s;
-            flex-shrink: 0;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+            flex-shrink: 0; box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+            margin: 0 3px;
         }
         .play-btn:hover { background: #f5f5f7; }
         .play-btn:active { transform: scale(0.92); }
-        .play-btn svg { width: 20px; height: 20px; }
+        .play-btn svg { width: 17px; height: 17px; }
 
-        /* Bottom row: voice + speed (secundário) */
-        .pp-extra {
-            display: flex; align-items: center; justify-content: space-between;
-            padding: 0 14px 12px;
-            gap: 10px;
+        /* Voz e velocidade: mesmo desenho, mesmo lugar, as duas abrem folha */
+        .pp-extras { display: flex; align-items: center; gap: 5px; flex-shrink: 0; }
+        .pp-pill {
+            height: 26px; padding: 0 9px;
+            display: inline-flex; align-items: center; justify-content: center;
+            border-radius: 999px;
+            border: 0.5px solid rgba(255,255,255,0.14);
+            background: rgba(255,255,255,0.06);
+            color: rgba(255,255,255,0.88);
+            font-family: var(--font-b); font-size: 11.5px; font-weight: 600;
+            letter-spacing: -0.1px; cursor: pointer; white-space: nowrap;
+            max-width: 82px; overflow: hidden; text-overflow: ellipsis;
+            transition: background 0.15s, color 0.15s, transform 0.12s;
         }
-        .pp-extra-left, .pp-extra-right { display: flex; align-items: center; gap: 8px; }
+        .pp-pill:hover { background: rgba(255,255,255,0.14); color: white; }
+        .pp-pill:active { transform: scale(0.96); }
+        .pp-pill[aria-expanded="true"] { background: rgba(255,255,255,0.18); color: white; }
+        .pp-pill--num { min-width: 42px; font-variant-numeric: tabular-nums; font-weight: 700; }
 
-        .pp-voice {
-            display: inline-flex; align-items: center; gap: 6px;
-            height: 28px; padding: 0 10px;
-            border-radius: 14px;
+        .pp-collapse {
+            width: 26px; height: 26px; border-radius: 50%;
+            background: transparent; border: none; cursor: pointer;
+            color: rgba(255,255,255,0.5);
+            display: flex; align-items: center; justify-content: center;
+            flex-shrink: 0; transition: background 0.15s, color 0.15s;
+        }
+        .pp-collapse:hover { background: rgba(255,255,255,0.1); color: white; }
+        .pp-collapse svg { width: 15px; height: 15px; }
+
+        /* --- Faixa 2: decorrido | trilha | restante (dentro dos 560px) --- */
+        .pp-scrub { display: flex; align-items: center; gap: 9px; }
+        .pp-time {
+            font-size: 10.5px; font-weight: 500;
+            color: rgba(255,255,255,0.5);
+            font-variant-numeric: tabular-nums; letter-spacing: 0.2px;
+            min-width: 34px; flex-shrink: 0; user-select: none;
+        }
+        .pp-time--rem { text-align: right; }
+        .pp-track {
+            flex: 1; height: 16px; position: relative; cursor: pointer;
+            display: flex; align-items: center; touch-action: none;
+        }
+        .pp-track::before {
+            content: ''; position: absolute; left: 0; right: 0;
+            height: 3.5px; border-radius: 2px;
+            background: rgba(255,255,255,0.18);
+            transition: height 0.15s;
+        }
+        .pp-track-fill {
+            position: absolute; left: 0; height: 3.5px; border-radius: 2px;
+            background: linear-gradient(90deg, #6B7AE9, #8C9CFF);
+            transition: width 0.1s linear, height 0.15s;
+            pointer-events: none;
+        }
+        .pp-knob {
+            position: absolute; right: -4px; top: 50%;
+            width: 9px; height: 9px; border-radius: 50%;
+            background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,0.5);
+            transform: translateY(-50%); transition: width 0.15s, height 0.15s, right 0.15s;
+        }
+        .pp-track:hover::before, .pp-track.dragging::before { height: 5px; }
+        .pp-track:hover .pp-track-fill, .pp-track.dragging .pp-track-fill { height: 5px; }
+        .pp-track:hover .pp-knob, .pp-track.dragging .pp-knob { width: 13px; height: 13px; right: -6px; }
+        .pp-track.dragging { cursor: grabbing; }
+
+        /* --- Folha de escolha (voz / velocidade) --- */
+        .pp-sheet-backdrop {
+            position: fixed; inset: 0; z-index: 400;
+            background: rgba(0,0,0,0.28);
+            backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px);
+            display: none; align-items: flex-end; justify-content: center;
+            padding: 0 12px 104px;
+        }
+        .pp-sheet-backdrop.open { display: flex; }
+        .pp-sheet {
+            width: 100%; max-width: 280px;
+            background: rgba(28, 28, 30, 0.94);
+            backdrop-filter: blur(40px) saturate(180%); -webkit-backdrop-filter: blur(40px) saturate(180%);
             border: 0.5px solid rgba(255,255,255,0.12);
-            background: rgba(255,255,255,0.05);
-            color: rgba(255,255,255,0.85);
-            font-size: 12px; font-weight: 600; font-family: var(--font-b);
-            cursor: pointer;
-            transition: all 0.15s;
+            border-radius: 18px; padding: 8px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+            animation: ppSheetIn 0.18s cubic-bezier(.2,.9,.3,1);
         }
-        .pp-voice:hover { background: rgba(255,255,255,0.12); color: white; }
-        .pp-voice .flag { font-size: 14px; line-height: 1; }
-        .pp-voice .vname { letter-spacing: -0.1px; }
-
-        .pp-speed {
-            background: rgba(255,255,255,0.05);
-            border: 0.5px solid rgba(255,255,255,0.12);
-            color: rgba(255,255,255,0.85);
-            border-radius: 14px;
-            padding: 0 11px;
-            height: 28px;
-            font-size: 12px; font-weight: 700; font-family: var(--font-b);
-            cursor: pointer;
-            appearance: none; -webkit-appearance: none;
-            min-width: 46px;
-            text-align: center;
-            transition: all 0.15s;
+        @keyframes ppSheetIn { from { opacity: 0; transform: translateY(10px) scale(0.98); } to { opacity: 1; transform: none; } }
+        .pp-sheet-title {
+            font-size: 10.5px; font-weight: 600; letter-spacing: 0.6px;
+            text-transform: uppercase; color: rgba(255,255,255,0.45);
+            text-align: center; padding: 6px 0 8px;
         }
-        .pp-speed:hover { background: rgba(255,255,255,0.12); color: white; }
-        .pp-speed option { background: #1A1A1C; color: white; }
+        .pp-sheet-item {
+            width: 100%; height: 40px; padding: 0 12px;
+            display: flex; align-items: center; justify-content: space-between; gap: 10px;
+            background: transparent; border: none; border-radius: 11px;
+            color: rgba(255,255,255,0.85);
+            font-family: var(--font-b); font-size: 13.5px; font-weight: 500;
+            cursor: pointer; text-align: left;
+            transition: background 0.12s;
+        }
+        .pp-sheet-item:hover { background: rgba(255,255,255,0.09); }
+        .pp-sheet-item.active { color: #fff; font-weight: 600; }
+        .pp-sheet-item .sub { font-size: 11.5px; color: rgba(255,255,255,0.4); font-weight: 400; }
+        .pp-sheet-item .check { color: #8C9CFF; font-size: 14px; }
 
         /* Compatibility: legacy classes that may still exist */
-        .pp-row1, .pp-row2 { display: none; }
+        .pp-row1, .pp-row2, .pp-extra, .pp-progress, .pp-voice, .pp-speed { display: none; }
 
         /* Scroll to listening button */
         .scroll-to-listening { position: fixed; bottom: 90px; right: 24px; z-index: 250; background: var(--white); color: var(--ink); border: 1px solid var(--border); border-radius: 10px; padding: 8px 14px; font-size: 12px; font-weight: 500; font-family: var(--font-b); cursor: pointer; display: none; align-items: center; gap: 6px; box-shadow: 0 4px 16px rgba(0,0,0,0.12); transition: all 0.2s; }
@@ -383,19 +475,26 @@
             .reader-header { padding: 8px 10px; gap: 6px; }
             .reader-title { font-size: 13px; max-width: 140px; overflow: hidden; text-overflow: ellipsis; }
 
-            /* Player mobile — full bleed */
+            /* Player mobile: a pílula ocupa a largura útil (a tela já é
+               estreita, então aqui ela não fica esticada), e os controles
+               descem para uma linha própria — em 390px não cabem ao lado
+               do título. */
             .player-bar { padding: 0 8px max(10px, env(safe-area-inset-bottom)) 8px; }
-            .player-pill { max-width: none; border-radius: 18px; }
-            .pp-main { gap: 12px; padding: 11px 12px; }
-            .pp-cover { width: 46px; height: 46px; border-radius: 9px; }
-            .pp-chapter { font-size: 13px; }
-            .pp-meta { font-size: 11px; gap: 6px; }
+            .player-pill { max-width: none; border-radius: 18px; padding: 10px 12px 11px; gap: 7px; }
+            .pp-top { gap: 9px; row-gap: 8px; }
+            .pp-cover { width: 40px; height: 40px; }
+            .pp-chapter { font-size: 12.5px; }
+            .pp-meta { font-size: 10.5px; }
+            .pp-controls { order: 3; flex-basis: 100%; justify-content: center; gap: 8px; }
             .pp-skip { width: 36px; height: 36px; }
             .pp-skip svg { width: 21px; height: 21px; }
             .play-btn { width: 44px; height: 44px; }
-            .pp-extra { padding: 0 12px 11px; }
-            .pp-voice { padding: 0 9px; height: 26px; font-size: 11.5px; }
-            .pp-speed { padding: 0 10px; height: 26px; font-size: 11.5px; min-width: 42px; }
+            .play-btn svg { width: 18px; height: 18px; }
+            .pp-extras { margin-left: auto; }
+            .pp-pill { max-width: 76px; }
+            .pp-time { font-size: 10px; min-width: 32px; }
+            .pp-sheet-backdrop { padding-bottom: 12px; }
+            .pp-sheet { max-width: none; }
 
             /* SVG highlight: garantir que renderiza no mobile */
             .pdf-hl-svg { display: block; }
@@ -497,23 +596,28 @@
         <div class="text-view hidden" id="textView"></div>
     </div>
 
-    <div class="player-bar" id="playerBar">
-        <div class="player-pill">
-            <!-- Top: progress bar -->
-            <div class="pp-progress" id="pBar" onclick="seekAudio(event)"><div class="pfill" id="pFill" style="width:0%"></div></div>
+    <div class="player-bar" id="playerBar" data-estado="expandido">
+        <!-- Recolhido: play/pause no centro, progresso em anel, chevron expande -->
+        <div class="pp-mini" id="ppMini" onclick="togglePlay()" title="Tocar/Pausar">
+            <svg class="pp-ring" viewBox="0 0 56 56" aria-hidden="true">
+                <circle class="pp-ring-bg" cx="28" cy="28" r="25"/>
+                <circle class="pp-ring-fill" id="ppRing" cx="28" cy="28" r="25" stroke-dasharray="157.08" stroke-dashoffset="157.08"/>
+            </svg>
+            <span class="pp-mini-icon" id="ppMiniIcon">
+                <svg viewBox="0 0 24 24" fill="currentColor"><polygon points="8 5 20 12 8 19 8 5"/></svg>
+            </span>
+            <button class="pp-mini-expand" onclick="event.stopPropagation(); expandirPlayer()" title="Mostrar o player" aria-label="Mostrar o player">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="18 15 12 9 6 15"/></svg>
+            </button>
+        </div>
 
-            <!-- Main row: cover | info | controls -->
-            <div class="pp-main">
+        <div class="player-pill" id="playerPill">
+            <!-- Faixa 1: capa | capítulo/página | controles | voz e velocidade -->
+            <div class="pp-top">
                 <div class="pp-cover" id="ppCover" onclick="toggleSidebar()" title="Ver índice"></div>
                 <div class="pp-info" onclick="toggleSidebar()">
                     <div class="pp-chapter" id="ppChapterText">Selecione para ouvir</div>
-                    <div class="pp-meta">
-                        <span id="curTime">0:00</span>
-                        <span class="dot"></span>
-                        <span id="ppPageInfo">—</span>
-                        <span class="dot"></span>
-                        <span id="totTime">0:00</span>
-                    </div>
+                    <div class="pp-meta"><span id="ppPageInfo">—</span></div>
                 </div>
                 <div class="pp-controls">
                     <button class="pp-skip" onclick="skipBack()" title="Voltar 10s" aria-label="Voltar 10 segundos">
@@ -529,27 +633,33 @@
                         <span class="pp-skip-num">10</span>
                     </button>
                 </div>
+                <div class="pp-extras">
+                    <button class="pp-pill" id="voiceBtn" onclick="abrirFolha('voz')" aria-haspopup="listbox" aria-expanded="false" title="Trocar a voz">
+                        <span id="voiceName">Antônio</span>
+                    </button>
+                    <button class="pp-pill pp-pill--num" id="speedBtn" onclick="abrirFolha('velocidade')" aria-haspopup="listbox" aria-expanded="false" title="Velocidade da leitura">1×</button>
+                </div>
+                <button class="pp-collapse" onclick="recolherPlayer()" title="Recolher o player" aria-label="Recolher o player">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
+                </button>
             </div>
 
-            <!-- Extra row: voice + speed -->
-            <div class="pp-extra">
-                <div class="pp-extra-left">
-                    <button class="pp-voice" id="voiceBtn" onclick="cycleVoice()" title="Trocar voz">
-                        <span class="flag">&#x1F1E7;&#x1F1F7;</span>
-                        <span class="vname" id="voiceName">Antonio</span>
-                    </button>
+            <!-- Faixa 2: decorrido | trilha arrastável | restante -->
+            <div class="pp-scrub">
+                <span class="pp-time" id="curTime">0:00</span>
+                <div class="pp-track" id="pBar" role="slider" aria-label="Posição da leitura" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" tabindex="0">
+                    <div class="pp-track-fill" id="pFill" style="width:0%"><span class="pp-knob"></span></div>
                 </div>
-                <div class="pp-extra-right">
-                    <select class="pp-speed" onchange="setSpeed(parseFloat(this.value))" title="Velocidade" aria-label="Velocidade">
-                        <option value="0.5">0.5×</option>
-                        <option value="0.75">0.75×</option>
-                        <option value="1" selected>1×</option>
-                        <option value="1.25">1.25×</option>
-                        <option value="1.5">1.5×</option>
-                        <option value="2">2×</option>
-                    </select>
-                </div>
+                <span class="pp-time pp-time--rem" id="totTime"></span>
             </div>
+        </div>
+    </div>
+
+
+    <div class="pp-sheet-backdrop" id="ppSheet" onclick="fecharFolha(event)">
+        <div class="pp-sheet" role="listbox" onclick="event.stopPropagation()">
+            <div class="pp-sheet-title" id="ppSheetTitle">Voz</div>
+            <div id="ppSheetItems"></div>
         </div>
     </div>
 
@@ -712,10 +822,55 @@ function resetPlayerIdle() {
     clearTimeout(playerIdleTimer);
     const bar = document.getElementById('playerBar');
     bar.classList.remove('auto-hidden');
-    if (settings.autoHide && !isPlaying) {
+    // 🚨 O GESTO GANHA DO TEMPORIZADOR. O auto-hide só esconde a pílula
+    // EXPANDIDA; sobre o botão recolhido ele nunca age, senão a pessoa
+    // recolhe, o tempo apaga o resto e ela fica sem porta de volta na tela.
+    // Também não some com a folha aberta nem durante o arrasto: sumiria
+    // debaixo da mão dela.
+    const recolhido = bar.dataset.estado === 'recolhido';
+    if (settings.autoHide && !isPlaying && !recolhido && !folhaAberta && !arrastandoTrilha) {
         playerIdleTimer = setTimeout(() => { bar.classList.add('auto-hidden'); }, 3000);
     }
 }
+
+// === RECOLHER / EXPANDIR ===
+// Lendo, a barra atrapalha; o dono quer poder escondê-la e trazê-la de volta
+// com um toque. Recolhida ela vira um botão de 56px com o progresso em anel —
+// continua sendo play/pause, e o chevron é que traz a pílula de volta.
+// A escolha fica em localStorage (echo_settings), junto de tema e auto-hide:
+// é preferência de TELA, e cada aparelho tem a sua — diferente da voz, que é
+// da conta porque acompanha a leitura.
+function aplicarEstadoPlayer(recolhido, persistir) {
+    const bar = document.getElementById('playerBar');
+    if (!bar) return;
+    bar.dataset.estado = recolhido ? 'recolhido' : 'expandido';
+    if (persistir) saveSetting('playerRecolhido', !!recolhido);
+    if (recolhido) {
+        clearTimeout(playerIdleTimer);
+        bar.classList.remove('auto-hidden');
+    } else {
+        resetPlayerIdle();
+    }
+}
+
+function recolherPlayer() {
+    // A pílula encolhe na direção do botão antes de sumir: muda de tamanho,
+    // não pisca.
+    const pill = document.getElementById('playerPill');
+    if (!pill) return aplicarEstadoPlayer(true, true);
+    pill.classList.add('encolhendo');
+    setTimeout(() => { pill.classList.remove('encolhendo'); aplicarEstadoPlayer(true, true); }, 155);
+}
+
+function expandirPlayer() { aplicarEstadoPlayer(false, true); }
+function alternarPlayer() {
+    const bar = document.getElementById('playerBar');
+    bar.dataset.estado === 'recolhido' ? expandirPlayer() : recolherPlayer();
+}
+
+window.recolherPlayer = recolherPlayer;
+window.expandirPlayer = expandirPlayer;
+window.alternarPlayer = alternarPlayer;
 
 // === AUTH: injetar token em todas as chamadas /api/ ===
 (function() {
@@ -1243,9 +1398,15 @@ function prefetchAhead(fromIdx) {
 function pauseAudio() { audio.pause(); isPlaying=false; updatePlayButton(); stopHighlightLoop(); resetPlayerIdle(); }
 function stopAudio() { audio.pause(); audio.src=''; isPlaying=false; updatePlayButton(); stopHighlightLoop(); wordBoundaries=[]; prefetchCache={}; resetPlayerIdle(); }
 
+const PP_ICONE_PLAY = '<svg viewBox="0 0 24 24" fill="currentColor"><polygon points="8 5 20 12 8 19 8 5"/></svg>';
+const PP_ICONE_PAUSE = '<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14"/><rect x="14" y="5" width="4" height="14"/></svg>';
+
 function updatePlayButton() {
     document.getElementById('playIcon').style.display = isPlaying?'none':'block';
     document.getElementById('pauseIcon').style.display = isPlaying?'block':'none';
+    // O botão recolhido é o MESMO controle: tem de mostrar o mesmo estado
+    const mini = document.getElementById('ppMiniIcon');
+    if (mini) mini.innerHTML = isPlaying ? PP_ICONE_PAUSE : PP_ICONE_PLAY;
 }
 function showPlayLoading(on) {
     const b = document.getElementById('playBtn');
@@ -1380,17 +1541,12 @@ function refreshPlayerTime() {
     if (audio.duration && isFinite(audio.duration)) {
         chunkDurations[currentChunkIndex] = audio.duration * 1000;
     }
+    // Enquanto a pessoa arrasta, a trilha mostra o alvo dela — não o áudio.
+    if (arrastandoTrilha) return;
     const curMs = getDocCurrentMs();
     const totMs = getDocTotalMs();
     const pct = totMs > 0 ? (curMs / totMs * 100) : 0;
-    const pFill = document.getElementById('pFill');
-    if (pFill) pFill.style.width = Math.min(100, pct) + '%';
-    // Tempos divididos pela VELOCIDADE — refletem tempo real até o fim
-    const speed = currentSpeed || 1;
-    const curEl = document.getElementById('curTime');
-    const totEl = document.getElementById('totTime');
-    if (curEl) curEl.textContent = fmt((curMs / 1000) / speed);
-    if (totEl) totEl.textContent = fmt((totMs / 1000) / speed);
+    pintarTrilha(pct / 100, curMs, totMs);
     // Page info
     const chunk = currentChunks[currentChunkIndex];
     const pageInfo = document.getElementById('ppPageInfo');
@@ -1422,11 +1578,98 @@ audio.addEventListener('ended', async () => {
     }
 });
 
-async function seekAudio(e) {
+// === TRILHA DE PROGRESSO ===
+// Num livro de 7 horas a trilha é o controle mais usado: precisa ser vista,
+// clicada e ARRASTADA. Por isso ela tem faixa de toque de 20px, knob visível
+// e os tempos nas pontas (decorrido à esquerda, restante à direita).
+let arrastandoTrilha = false;
+
+const PP_ANEL = 2 * Math.PI * 25; // circunferência do anel do botão recolhido
+
+function pintarTrilha(frac, curMs, totMs) {
+    frac = Math.max(0, Math.min(1, frac || 0));
+    const pFill = document.getElementById('pFill');
+    const pBar = document.getElementById('pBar');
+    const curEl = document.getElementById('curTime');
+    const totEl = document.getElementById('totTime');
+    const anel = document.getElementById('ppRing');
+    if (pFill) pFill.style.width = (frac * 100) + '%';
+    if (pBar) pBar.setAttribute('aria-valuenow', Math.round(frac * 100));
+    // O mesmo progresso, em anel, para o estado recolhido
+    if (anel) anel.setAttribute('stroke-dashoffset', (PP_ANEL * (1 - frac)).toFixed(2));
+    // Tempos divididos pela VELOCIDADE — refletem tempo real de escuta
+    const speed = currentSpeed || 1;
+    if (curEl) curEl.textContent = fmt((curMs / 1000) / speed);
+    // À direita fica o que FALTA — é o que responde "dá tempo de terminar?".
+    // Sem duração conhecida NÃO se escreve "-0:00": zero restante num livro
+    // que mal começou é informação errada. Melhor não dizer nada.
+    const falta = totMs - curMs;
+    if (totEl) totEl.textContent = (totMs > 0 && isFinite(falta) && falta > 500)
+        ? '-' + fmt((falta / 1000) / speed) : '';
+}
+
+function fracDoPonteiro(e) {
+    const b = document.getElementById('pBar');
+    if (!b) return 0;
+    const r = b.getBoundingClientRect();
+    return Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
+}
+
+function iniciarArrasto(e) {
+    if (!getDocTotalMs()) return;
+    const b = document.getElementById('pBar');
+    arrastandoTrilha = true;
+    b.classList.add('dragging');
+    try { b.setPointerCapture(e.pointerId); } catch {}  // ponteiro sintetico nao captura
+    const f = fracDoPonteiro(e);
+    pintarTrilha(f, f * getDocTotalMs(), getDocTotalMs());
+    resetPlayerIdle();
+}
+
+function moverArrasto(e) {
+    if (!arrastandoTrilha) return;
+    const f = fracDoPonteiro(e);
+    pintarTrilha(f, f * getDocTotalMs(), getDocTotalMs());
+}
+
+async function soltarArrasto(e) {
+    if (!arrastandoTrilha) return;
+    const b = document.getElementById('pBar');
+    arrastandoTrilha = false;
+    b.classList.remove('dragging');
+    try { b.releasePointerCapture(e.pointerId); } catch {}
+    await seekToFrac(fracDoPonteiro(e));
+}
+
+// Estado salvo do player (recolhido/expandido) vale desde o primeiro quadro
+(function estadoInicialDoPlayer() {
+    aplicarEstadoPlayer(settings.playerRecolhido === true, false);
+    updatePlayButton();
+})();
+
+(function ligarTrilha() {
+    const b = document.getElementById('pBar');
+    if (!b) return;
+    b.addEventListener('pointerdown', iniciarArrasto);
+    b.addEventListener('pointermove', moverArrasto);
+    b.addEventListener('pointerup', soltarArrasto);
+    b.addEventListener('pointercancel', () => { arrastandoTrilha = false; b.classList.remove('dragging'); });
+    b.addEventListener('keydown', (e) => {
+        const tot = getDocTotalMs();
+        if (!tot) return;
+        const passo = 10000 / tot; // 10 s
+        if (e.key === 'ArrowRight') { e.preventDefault(); seekToFrac(getDocCurrentMs() / tot + passo); }
+        if (e.key === 'ArrowLeft') { e.preventDefault(); seekToFrac(getDocCurrentMs() / tot - passo); }
+    });
+})();
+
+// Compat: o clique simples continua valendo (e é o que o teste antigo usa)
+async function seekAudio(e) { await seekToFrac(fracDoPonteiro(e)); }
+
+async function seekToFrac(frac) {
     const totMs = getDocTotalMs();
     if (!totMs) return;
-    const b = document.getElementById('pBar'), r = b.getBoundingClientRect();
-    const targetMs = ((e.clientX - r.left) / r.width) * totMs;
+    const targetMs = Math.max(0, Math.min(1, frac)) * totMs;
     // Achar qual chunk contém targetMs
     let acc = 0, targetChunk = 0, localMs = 0;
     for (let i = 0; i < currentChunks.length; i++) {
@@ -1445,20 +1688,97 @@ async function seekAudio(e) {
         }
     }
 }
-function setSpeed(s) { currentSpeed = s; audio.playbackRate = s; refreshPlayerTime(); }
+function setSpeed(s) {
+    currentSpeed = s;
+    audio.playbackRate = s;
+    const b = document.getElementById('speedBtn');
+    // "1×" e não "1.0×": o rótulo tem de caber e ser lido de relance
+    if (b) b.textContent = (Number.isInteger(s) ? s : s) + '×';
+    refreshPlayerTime();
+}
+
+// === FOLHA DE ESCOLHA (voz e velocidade) ===
+// Mesmo papel da sheet do app: nenhum <select> nativo, que desenharia com o
+// chrome do sistema e destoaria da fonte da casa.
+const VELOCIDADES = [0.5, 0.75, 1, 1.25, 1.5, 2];
+let folhaAberta = null;
+
+async function abrirFolha(tipo) {
+    const fundo = document.getElementById('ppSheet');
+    const titulo = document.getElementById('ppSheetTitle');
+    const lista = document.getElementById('ppSheetItems');
+    if (!fundo || !lista) return;
+
+    if (tipo === 'voz' && !voiceList.length) await loadVoices();
+
+    const itens = tipo === 'voz'
+        ? voiceList.map(v => ({
+            valor: v.name,
+            rotulo: v.label || rotuloDaVoz(v.name),
+            sub: v.gender || '',
+            ativo: v.name === selectedVoice,
+        }))
+        : VELOCIDADES.map(v => ({
+            valor: v,
+            rotulo: v + '×',
+            sub: v === 1 ? 'normal' : '',
+            ativo: v === currentSpeed,
+        }));
+
+    titulo.textContent = tipo === 'voz' ? 'Voz' : 'Velocidade';
+    lista.innerHTML = itens.map(i => `
+        <button class="pp-sheet-item${i.ativo ? ' active' : ''}" role="option" aria-selected="${i.ativo}"
+                onclick="escolherNaFolha('${tipo}', ${typeof i.valor === 'string' ? `'${i.valor}'` : i.valor})">
+            <span>${i.rotulo}${i.sub ? ` <span class="sub">${i.sub}</span>` : ''}</span>
+            ${i.ativo ? '<span class="check">✓</span>' : ''}
+        </button>`).join('');
+
+    fundo.classList.add('open');
+    folhaAberta = tipo;
+    document.getElementById(tipo === 'voz' ? 'voiceBtn' : 'speedBtn')?.setAttribute('aria-expanded', 'true');
+    resetPlayerIdle();
+}
+
+function fecharFolha(e) {
+    if (e && e.target && e.target.id !== 'ppSheet') return;
+    document.getElementById('ppSheet')?.classList.remove('open');
+    document.getElementById('voiceBtn')?.setAttribute('aria-expanded', 'false');
+    document.getElementById('speedBtn')?.setAttribute('aria-expanded', 'false');
+    folhaAberta = null;
+    resetPlayerIdle();
+}
+
+async function escolherNaFolha(tipo, valor) {
+    fecharFolha();
+    if (tipo === 'velocidade') { setSpeed(valor); return; }
+    await aplicarVoz(valor);
+}
+
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && folhaAberta) fecharFolha(); });
+window.abrirFolha = abrirFolha;
+window.fecharFolha = fecharFolha;
+window.escolherNaFolha = escolherNaFolha;
 
 function skipBack() { if(audio.src) audio.currentTime = Math.max(0, audio.currentTime - 10); }
 function skipForward() { if(audio.src) audio.currentTime = Math.min(audio.duration || 0, audio.currentTime + 10); }
 
 let voiceList = [], voiceIdx = 0, selectedVoice = 'pt-BR-AntonioNeural';
 
-// Troca a voz DURANTE a leitura: o botão fica na mesma barra da velocidade,
-// que é onde a mão já está. Cada toque passa para a próxima das três.
+// Troca a voz DURANTE a leitura: a pílula fica ao lado da velocidade, que é
+// onde a mão já está, e abre a mesma folha. O ciclo continua existindo para
+// quem chamar por código.
 async function cycleVoice() {
     if (!voiceList.length) await loadVoices();
     if (!voiceList.length) return;
-    voiceIdx = (voiceIdx + 1) % voiceList.length;
-    selectedVoice = voiceList[voiceIdx].name;
+    await aplicarVoz(voiceList[(voiceIdx + 1) % voiceList.length].name);
+}
+
+async function aplicarVoz(nome) {
+    if (!voiceList.length) await loadVoices();
+    const i = voiceList.findIndex(v => v.name === nome);
+    if (i < 0) return;
+    voiceIdx = i;
+    selectedVoice = nome;
 
     // 🚨 O trecho seguinte já estava baixado NA VOZ ANTIGA. Sem limpar,
     // continuaríamos ouvindo a voz de antes e pareceria que a troca falhou.
