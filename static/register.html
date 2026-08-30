@@ -59,6 +59,8 @@
 
         .error { background: #FEF2F2; border: 1px solid #FECACA; border-radius: 8px; padding: 10px 14px; font-size: 13px; color: var(--danger); margin-bottom: 16px; display: none; }
         .error.show { display: block; }
+        /* Cadastro fechado nao e erro de quem chegou: tom neutro, nao vermelho */
+        .error.aviso { background: #F8FAFC; border-color: #E2E8F0; color: #475569; }
 
         .footer-text { text-align: center; font-size: 12px; color: var(--mist); margin-top: 24px; }
 
@@ -143,7 +145,7 @@ if (localStorage.getItem('echo_token')) window.location.href = '/app';
             document.getElementById('registerForm').style.display = 'none';
             var err = document.getElementById('err');
             err.textContent = d.mensagem;
-            err.className = 'error show';
+            err.className = 'error aviso show';
         }
     } catch (e) { /* sem resposta: deixa tentar e o servidor decide */ }
 })();
