@@ -8,17 +8,15 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useLocalSearchParams, router } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import TrackPlayer, {
-  Event,
   State,
   usePlaybackState,
   useProgress,
-  useTrackPlayerEvents,
 } from 'react-native-track-player';
 import { BlurView } from 'expo-blur';
 import Svg, { Path } from 'react-native-svg';
 import {
   ensurePlayerSetup, loadAndPlay, play as tpPlay, pause as tpPause,
-  jumpBy, seekTo as tpSeek, setRate as tpSetRate,
+  jumpBy, seekTo as tpSeek, setRate as tpSetRate, definirAvanco,
 } from '@/lib/player';
 import {
   getDocument, getChunkAudio, getPageWords, getToc, saveProgress,
@@ -217,14 +215,42 @@ export default function Reader() {
     }
   }, [data, docId, speed, toc]);
 
-  // Auto-advance: quando uma track termina, vai pra próxima
-  useTrackPlayerEvents([Event.PlaybackQueueEnded], async () => {
+  // Auto-advance: a tela REGISTRA como avançar; quem CHAMA é o playback
+  // service (mobile/service.ts), que roda headless.
+  //
+  // 🚨 Isto era um useTrackPlayerEvents aqui dentro. Sair da tela de leitura
+  // (o chevron de voltar, ou qualquer navegação) desmontava o componente, o
+  // React limpava a inscrição, e no fim do trecho não havia ninguém para
+  // tocar o seguinte — a leitura morria sozinha. Registrando fora da árvore,
+  // a função sobrevive ao desmonte e o livro continua.
+  //
+  // 🚨 De propósito SEM cleanup no desmonte: limpar aqui devolveria o defeito.
+  // Abrir outro documento substitui o registro, que é o que se quer.
+  useEffect(() => {
     if (!data) return;
-    const nextIdx = soundChunkIdxRef.current + 1;
-    if (nextIdx > 0 && nextIdx < data.chunks.length) {
-      await playChunk(nextIdx, 0);
-    }
-  });
+    definirAvanco(async () => {
+      const nextIdx = soundChunkIdxRef.current + 1;
+      if (nextIdx > 0 && nextIdx < data.chunks.length) {
+        await playChunk(nextIdx, 0);
+      }
+    });
+  }, [data, playChunk]);
+
+  // O progresso guardava a posição de PARTIDA do trecho, nunca a corrente:
+  // quem ouvia 50s e fechava o app voltava ao início daquele trecho e reouvia
+  // tudo. Agora a posição real vai ao servidor a cada 10s de reprodução.
+  useEffect(() => {
+    if (!isPlaying) return;
+    const t = setInterval(async () => {
+      const idx = soundChunkIdxRef.current;
+      if (idx < 0) return;
+      try {
+        const p = await TrackPlayer.getProgress();
+        await saveProgress(docId, idx, Math.round(p.position * 1000));
+      } catch {}
+    }, 10000);
+    return () => clearInterval(t);
+  }, [isPlaying, docId]);
 
   const togglePlay = useCallback(async () => {
     if (soundChunkIdxRef.current < 0) {

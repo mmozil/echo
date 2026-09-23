@@ -25,7 +25,7 @@ docker compose up --build
 # Mobile (Expo)
 cd mobile
 npm install
-npx expo start --lan       # Expo Go scanea QR
+npx expo start --dev-client   # 🚨 NÃO Expo Go — ver abaixo
 ```
 
 ## Mobile (`mobile/`)
@@ -33,7 +33,10 @@ npx expo start --lan       # Expo Go scanea QR
 App nativo React Native + Expo SDK 54, mesmo backend. Compartilha login/progresso com a versão web automaticamente via JWT em SecureStore + `PUT /api/documents/{id}/progress`.
 
 - **Estrutura:** Expo Router (file-based) — `app/_layout.tsx`, `app/login.tsx`, `app/index.tsx` (library), `app/reader/[id].tsx`
-- **Áudio:** `expo-av` baseline; roadmap: `react-native-track-player` (background + lockscreen controls)
+- **Áudio:** **`react-native-track-player` v4** (background + controles na tela de bloqueio). `expo-av` continua no `package.json` como sobra da fase anterior, **sem um único import** — não é o motor.
+- 🚨 **Expo Go NÃO serve.** O `TrackPlayerModule` é código nativo e não existe lá: no Expo Go o app abre e simplesmente não sai som, e o diagnóstico natural (errado) é "o áudio do mobile quebrou". Usar dev-client ou build nativo.
+- 🚨 **`react-native-track-player` NÃO entra em `plugins` do `app.json`.** A versão 4.1.2 não traz `app.plugin.js`, e listá-la ali fazia `npx expo config`/`prebuild`/`eas build` **abortar** antes de gerar o projeto nativo (*"Verify that react-native-track-player includes a config plugin"*) — nenhum binário podia ser produzido. O pacote não precisa de plugin: o `AndroidManifest.xml` dele já declara o `MusicService` com `foregroundServiceType="mediaPlayback"`, e as permissões estão em `android.permissions`.
+- 🚨 **O avanço de trecho mora em `service.ts`, fora da árvore do React.** Ele vivia num `useTrackPlayerEvents` dentro de `reader/[id].tsx`: sair da tela de leitura desmontava o componente, o React limpava a inscrição, e a voz parava no fim do trecho corrente. Hoje a tela só **registra** como avançar (`definirAvanco` em `src/lib/player.ts`) e o playback service chama. **Não pôr cleanup no desmonte** — seria devolver o defeito.
 - **Highlights:** `react-native-svg` com mesma técnica de path do web (1 path com sub-paths round-rect por linha da frase)
 - **PDF rendering:** PNG do servidor (`/api/documents/{id}/pages/{p}.png`) — sem PDF.js no mobile, mesma estratégia do fallback web
 - **Sync:** progresso salva em cada chunk transition; web detecta no foco da aba via `GET /api/documents/{id}`
@@ -172,6 +175,94 @@ nem oferecer voz que o resto do código recusa (`voz_valida()`).
 - 🚨 Ao trocar de voz o front **limpa o prefetch**: os próximos trechos já
   tinham sido baixados na voz antiga.
 
+### Precisão da leitura — o narrador soletrava (09/2026)
+
+O PyMuPDF devolve título com **letter-spacing** como letras soltas, e a folga
+guarda a informação: **um espaço separa LETRA, dois ou mais separam PALAVRA**.
+
+```
+'T E X T O  B Í B L I C O  P A R A  M E D I T A Ç Ã O'
+ ^ letra     ^^ fronteira de palavra
+```
+
+O `re.sub(r" {2,}", " ", ...)` que vinha logo depois colapsava os dois em um e
+apagava a fronteira. O edge-tts recebia letras e soletrava — **medido no
+narrador**: 25 unidades faladas (`['T','E','X','T','O','B',...]`) contra 4
+depois da correção (`['TEXTO','BÍBLICO','PARA','MEDITAÇÃO']`), com áudio 57%
+mais curto.
+
+- **119 das 148 páginas** de "Buscando os Dons Espirituais" tinham trecho
+  soletrado (618 trechos). Nos outros dois livros da biblioteca, **zero** — é
+  característica do PDF, não do leitor, e por isso eles servem de controle: com
+  a correção saem byte a byte idênticos.
+- 🚨 **A de-soletração roda POR LINHA e ANTES de colapsar espaço.** Depois não
+  dá: a fronteira já se perdeu. Mesma razão para o corte de número de página —
+  a regra antiga rodava depois da junção de linhas e **nunca casava com nada**.
+- 🚨 **O freio contra falso positivo é a CAIXA ALTA.** Em português "o", "a" e
+  "e" são palavras; três seguidas casariam com o padrão. Só dispara em caixa
+  alta ou com 5+ sinais.
+- 🚨 **Cabeçalho corrente sai pela POSIÇÃO, não pela repetição** (301 leituras
+  repetidas em 144 páginas). O Essencialismo repete trecho de corpo legítimo
+  ('Sent', 'Acha que'): deduplicar por igualdade apagaria texto de verdade.
+  Cabeçalho vive na margem (y<0,12 ou y>0,88), texto vive no miolo.
+- 🚨 **`get_word_positions_on_page` junta as letras também.** O destaque no PDF
+  casa aquela lista com o texto do trecho; se o texto diz "TEXTO" e a lista traz
+  'T','E','X','T','O', o realce anda sozinho e erra a linha.
+- ⚠️ **Limite conhecido:** a correção depende de o PDF ter deixado a folga dupla
+  entre palavras. Num PDF que espaça tudo por igual, a informação não existe e
+  o resultado sairia colado ("TEXTOBÍBLICO"). Não foi o caso de nenhum dos três
+  livros da biblioteca. O conserto definitivo seria geométrico (`rawdict`).
+- **Livro já subido** não é alcançado pela correção (o texto está em
+  `chunks.text_content`): `python scripts/reprocessar_documento.py --aplicar`
+  reextrai e **atualiza no lugar**, preservando `chunks.id` e, com ele, o
+  progresso de leitura. Sem `--aplicar` é prévia.
+
+### Sumário — quando o índice do PDF não é um índice (09/2026)
+
+Editor gráfico costuma virar **cada caixa de texto** em marcador. Medido:
+
+| livro | entradas | páginas | por página |
+|---|---|---|---|
+| Essencialismo | 32 | 215 | 0,15 |
+| Carnegie | 43 | 294 | 0,15 |
+| Dons Espirituais | **565** | 148 | **3,82** |
+
+São 25× de separação — por isso o corte em **1,0 entrada por página** não é
+chute. Reprovado o outline, o sumário é **derivado da tipografia**: 15 entradas
+no lugar de 565, e os 12 capítulos batem com o sumário impresso do próprio
+livro (páginas 4 e 5), que serve de conferência independente.
+
+- Corpo de texto é medido **só nas linhas longas (40+ caracteres)** — essas são
+  corpo por definição. Tomar a moda de tudo aponta para o tamanho errado em
+  livro com muita legenda e infográfico.
+- Título de display quebra em várias linhas ('Um Dom' / 'Para Quê?'): linhas
+  seguidas, mesma página, mesmo corpo de letra e coladas na vertical são o
+  **mesmo** título.
+- 🚨 **`get_toc` é CACHEADO.** Derivar custa **1.702 ms** num livro de 148
+  páginas contra 3 ms quando o outline serve, e a rota é `async`: sem cache,
+  cada abertura do leitor travava o servidor inteiro por quase dois segundos.
+- Na tela: `.toc-item.active` existia no CSS e **nunca era aplicada** — regra
+  morta. Hoje o item aceso segue a leitura e a lista rola sozinha, mas **recua
+  por 5s quando a mão está nela**.
+
+### Tocar com a tela apagada (09/2026)
+
+Quatro causas independentes do mesmo sintoma ("saí da tela e parou de falar"):
+
+1. 🚨 **`await requestAnimationFrame` no caminho do áudio.** A especificação
+   manda o navegador **não servir quadro** para documento escondido: a promessa
+   ficava pendurada para sempre e o `audio.src` do trecho seguinte nunca era
+   atribuído. **A ordem agora é SOM PRIMEIRO, ENFEITE DEPOIS** — nada que só
+   desenhe fica entre ter a URL e mandar tocar. Eram **três** ocorrências no
+   arquivo; a terceira só apareceu conferindo o que subiu.
+2. **Sem `navigator.mediaSession`** o sistema não reconhece a aba como
+   reprodutor: nada na tela de bloqueio e menos prioridade para não ser suspensa.
+3. **Um 401 em prefetch de fundo** fazia `window.location.href='/login'`: a
+   página era descarregada e o `<audio>` morria junto, com o telefone no bolso.
+   Hoje o aviso fica guardado e só leva ao login quando a tela volta.
+4. **No mobile**, o avanço de trecho morava num hook do React — ver a seção
+   Mobile acima.
+
 ## Deploy (Coolify)
 
 - **Build pack:** `dockercompose` (docker-compose.yml)
@@ -182,7 +273,9 @@ nem oferecer voz que o resto do código recusa (`voz_valida()`).
 - **Rede:** `coolify` (Traefik roteia via labels no docker-compose.yml)
 - **Env vars:** nenhuma obrigatória (Edge TTS é grátis)
 - **Deploy:** Push to main → GitHub App webhook → Coolify auto-build
-- **Deploy manual:** `curl -s "https://apps.cloudesneper.com.br/api/v1/deploy?uuid=iws04g0kow8w44o40ocsw4s0&force=true" -H "Authorization: Bearer 5|claude-deploy-token-2026"`
+- 🚨 **O webhook nem sempre dispara** (conferido em 22/09/2026: push entrou, `docker logs coolify` não registrou `ApplicationDeploymentJob`). Depois de dar push, confirmar que o container foi recriado; se não, chamar o deploy na mão.
+- **Deploy manual:** `curl -X POST -s "https://coolify.tier.finance/api/v1/deploy?uuid=iws04g0kow8w44o40ocsw4s0&force=true" -H "Authorization: Bearer 5|claude-deploy-token-2026"`
+  (a URL antiga `apps.cloudesneper.com.br` **não resolve mais** — o `APP_URL` do Coolify é `https://coolify.tier.finance`. Acompanhar com `GET /api/v1/deployments/{deployment_uuid}`.)
 
 ### Cuidados no deploy
 - Coolify pode manter container antigo rodando (rolling deploy). Verificar com: `ssh root@46.224.220.223 "docker ps | grep iws04"`

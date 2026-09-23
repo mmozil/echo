@@ -25,8 +25,7 @@
     },
     "plugins": [
       "expo-router",
-      "expo-font",
-      "react-native-track-player"
+      "expo-font"
     ],
     "experiments": {
       "typedRoutes": true

@@ -2654,7 +2654,8 @@ async function handlePageClick(pageNum, relX, relY) {
         wordBoundaries = data.boundaries || [];
         _sentenceRanges = [];
         if (data.text) renderTextWithWords(data.text);
-        await new Promise(r => requestAnimationFrame(r));
+        // (sem esperar quadro de animação: buildBoundaryMap só lê textContent,
+        // e os spans existem de forma síncrona logo após o innerHTML)
         buildBoundaryMap();
 
         let seekTimeSec = 0;

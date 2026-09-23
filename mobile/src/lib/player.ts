@@ -7,6 +7,35 @@ import TrackPlayer, {
   IOSCategoryMode,
 } from 'react-native-track-player';
 
+// =========================================================================
+// O AVANÇO DE TRECHO MORA AQUI, FORA DA ÁRVORE DO REACT
+//
+// Ele vivia num useTrackPlayerEvents dentro de app/reader/[id].tsx. Quem
+// tocava no botão de voltar (ou saía da tela de leitura por qualquer caminho)
+// desmontava a tela, o React limpava a inscrição, e quando o trecho corrente
+// acabava não havia mais ninguém para tocar o seguinte: a voz parava sozinha,
+// com o aparelho no bolso.
+//
+// 🚨 O playback service (service.ts) roda headless e sobrevive ao desmonte —
+// é ele quem chama avancarTrecho(). A tela só REGISTRA como avançar.
+// =========================================================================
+
+type Avanco = () => Promise<void>;
+let _avancar: Avanco | null = null;
+
+export function definirAvanco(fn: Avanco | null) {
+  _avancar = fn;
+}
+
+export async function avancarTrecho() {
+  if (!_avancar) return;
+  try {
+    await _avancar();
+  } catch (e) {
+    console.warn('[echo] avanço de trecho falhou:', e);
+  }
+}
+
 let setupPromise: Promise<void> | null = null;
 
 export async function ensurePlayerSetup() {
@@ -52,6 +81,9 @@ export async function ensurePlayerSetup() {
       backwardJumpInterval: 10,
     });
   })();
+  // 🚨 Guardar a promessa REJEITADA travava o áudio pelo resto da sessão:
+  // toda chamada seguinte recebia a mesma falha, sem nunca tentar de novo.
+  setupPromise.catch(() => { setupPromise = null; });
   return setupPromise;
 }
 
