@@ -1422,6 +1422,30 @@ function scrollPdfToPage(page, yRelativo) {
     setTimeout(() => { programmaticScroll = false; }, 1000);
 }
 
+// Rola só quando a linha lida saiu da faixa confortável da tela. Com folga
+// em cima e embaixo, para não ficar corrigindo a cada palavra — e com um
+// intervalo mínimo entre rolagens, porque rolagem suave em cima de rolagem
+// suave briga consigo mesma.
+let _ultimaRolagemSeguindo = 0;
+function manterLinhaAVista(pageNum, yRelativo) {
+    const el = document.getElementById(`pdf-page-${pageNum}`);
+    const pv = document.getElementById('pdfView');
+    if (!el || !pv) return;
+
+    const caixa = pv.getBoundingClientRect();
+    const r = el.getBoundingClientRect();
+    const linha = r.top + yRelativo * r.height;
+
+    const folgaTopo = caixa.top + caixa.height * 0.12;
+    const folgaPe = caixa.top + caixa.height * 0.80;
+    if (linha >= folgaTopo && linha <= folgaPe) return;      // está à vista: não mexe
+
+    const agora = Date.now();
+    if (agora - _ultimaRolagemSeguindo < 900) return;
+    _ultimaRolagemSeguindo = agora;
+    scrollPdfToPage(pageNum, yRelativo);
+}
+
 // Onde, na página, está a palavra que está sendo falada agora (0 a 1).
 // Devolve undefined quando ainda não dá para saber — e aí quem chama cai no
 // topo da página em vez de inventar uma posição.
@@ -1925,13 +1949,27 @@ function updateHighlight() {
         if (wt < ts + 60 || wt > ts + th - 80) tv.scrollTo({ top: wt - th / 3, behavior: 'smooth' });
     }
 
-    // PDF view: rolar quando a PÁGINA muda, não a cada tique.
-    // 🚨 Isto rodava 20 vezes por segundo, com scrollIntoView suave: a cada
-    // tentativa de rolar com a mão, a página era puxada de volta em 50ms, e
-    // como programmaticScroll estava ligado o gesto nem era reconhecido.
+    // PDF view: a vista SEGUE a linha lida.
+    //
+    // 🚨 Antes só rolava quando a PÁGINA mudava. Neste e-book cada página é um
+    // trecho de ~60 s: durante um minuto inteiro a voz descia a página e a
+    // tela ficava parada onde tinha sido posta. Quem olhava via um parágrafo
+    // e ouvia outro — o relato foi ver o fim da página 46 enquanto a voz lia
+    // o título no meio dela.
+    //
+    // 🚨 Mas NÃO se rola a cada tique (20x por segundo, com rolagem suave):
+    // era isso que puxava a página de volta a cada gesto da mão. Só se rola
+    // quando a linha SAI da faixa confortável — a mesma regra que a vista de
+    // texto já usava.
     if (currentView==='pdf' && currentChunks[currentChunkIndex] && !userScrolling) {
         const pg = currentChunks[currentChunkIndex].page;
-        if (pg !== _ultimaPaginaRolada) { _ultimaPaginaRolada = pg; scrollPdfToPage(pg, alturaDoDestaque(pg)); }
+        const y = alturaDoDestaque(pg);
+        if (pg !== _ultimaPaginaRolada) {
+            _ultimaPaginaRolada = pg;
+            scrollPdfToPage(pg, y);
+        } else if (typeof y === 'number') {
+            manterLinhaAVista(pg, y);
+        }
     }
 
     // PDF highlight
