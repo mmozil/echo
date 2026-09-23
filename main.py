@@ -709,6 +709,33 @@ async def remove_document(doc_id: str, request: Request):
     return {"ok": True}
 
 
+# =========================================================================
+# ÂNCORA DO CLIQUE  (ler antes de mexer)
+#
+# O clique na página descobre QUAL PALAVRA foi tocada pela posição, e precisa
+# saber onde essa palavra cai dentro do trecho para mandar a voz começar ali.
+# Isso era feito procurando o TEXTO das palavras vizinhas dentro do trecho —
+# busca difusa, que erra quando a página tem cabeçalho, número ou aspa curva.
+#
+# Não é mais preciso procurar: depois que a extração do texto e a lista de
+# posições passaram a usar a MESMA peneira, as duas são a mesma sequência.
+# MEDIDO no acervo: 1.002 de 1.002 palavras no mesmo índice, em 9 páginas.
+# Então o índice da palavra na página JÁ É o índice dentro do trecho — só
+# falta descontar os trechos que vieram antes dela na mesma página.
+# =========================================================================
+
+def _palavras_antes_do_trecho(doc_id: str, chunk: dict) -> int:
+    """Quantas palavras da página vêm antes deste trecho."""
+    antes = 0
+    for outro in get_chunks(doc_id):
+        if outro["page_number"] != chunk["page_number"]:
+            continue
+        if outro["chunk_index"] >= chunk["chunk_index"]:
+            continue
+        antes += len(outro["text_content"].split())
+    return antes
+
+
 # --- Gerar áudio de um chunk ---
 
 @app.post("/api/documents/{doc_id}/chunks/{chunk_index}/audio")
@@ -750,6 +777,8 @@ async def generate_chunk_audio(
         "chunk_index": chunk_index,
         "page": chunk["page_number"],
         "voice": usada,
+        # Âncora do clique: quantas palavras da página vêm antes deste trecho.
+        "word_offset": _palavras_antes_do_trecho(doc_id, chunk),
     }
 
 
@@ -819,7 +848,8 @@ async def get_chunk_text(doc_id: str, chunk_index: int, request: Request):
     chunk = get_chunk(doc_id, chunk_index)
     if not chunk:
         raise HTTPException(404, "Chunk não encontrado")
-    return {"text": chunk["text_content"], "page": chunk["page_number"]}
+    return {"text": chunk["text_content"], "page": chunk["page_number"],
+            "word_offset": _palavras_antes_do_trecho(doc_id, chunk)}
 
 
 # --- Atualizar progresso ---

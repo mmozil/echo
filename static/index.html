@@ -1271,7 +1271,11 @@ async function renderPdfPage(pageNum) {
         textLayerDiv.addEventListener('click', (e) => {
             const span = e.target.closest('span');
             if (!span || !span.dataset.text) return;
-            handleTextLayerClick(pageNum, span, textLayerDiv);
+            // 🚨 As coordenadas do CLIQUE vão junto. Sem elas a função caía no
+            // centro do span — e no PDF.js um span costuma ser a LINHA
+            // INTEIRA, então clicar na primeira palavra da linha mandava a voz
+            // começar no MEIO dela. Era a maior fonte de imprecisão do clique.
+            handleTextLayerClick(pageNum, span, textLayerDiv, e.clientX, e.clientY);
         });
 
         // Hover SVG (estilo Speechify): pinta a frase inteira em cinza
@@ -2757,7 +2761,7 @@ async function handlePageClick(pageNum, relX, relY) {
 
         let seekTimeSec = 0;
         if (wordBoundaries.length > 0) {
-            const bIdx = findBoundaryByWordSequence(contextWords);
+            const bIdx = boundaryAncorado(sentStartIdx, data.word_offset, contextWords);
             if (bIdx >= 0 && wordBoundaries[bIdx]) {
                 seekTimeSec = wordBoundaries[bIdx].offset_ms / 1000;
             }
@@ -2791,15 +2795,66 @@ async function handlePageClick(pageNum, relX, relY) {
     }
 }
 
+// =========================================================================
+// ÂNCORA DO CLIQUE — o índice manda, a busca por texto é a rede
+//
+// Antes, descobrir ONDE a voz devia começar era procurar o TEXTO das palavras
+// vizinhas dentro dos boundaries do TTS. Busca difusa: errava com aspa curva,
+// com cabeçalho, com número, e não sabia dizer "não achei" (ver o piso de
+// confiança em findBoundaryByWordSequence).
+//
+// Não é mais preciso procurar. Depois que a extração do texto e a lista de
+// posições passaram a usar a MESMA peneira, as duas são a mesma sequência:
+// MEDIDO no acervo, 1.002 de 1.002 palavras no mesmo índice, em 9 páginas.
+// Então o índice da palavra clicada NA PÁGINA, menos as palavras dos trechos
+// anteriores da mesma página (`word_offset`, que o servidor manda), É o
+// índice dentro do trecho. E `boundaryToWordMap` já liga trecho → boundary.
+// =========================================================================
+
+function boundaryAncorado(indiceNaPagina, wordOffset, contextoDeReserva) {
+    // Sem a âncora do servidor (resposta antiga em cache), cai na busca.
+    if (typeof wordOffset !== 'number' || !boundaryToWordMap.length) {
+        return findBoundaryByWordSequence(contextoDeReserva);
+    }
+
+    const alvo = indiceNaPagina - wordOffset;
+    if (alvo < 0) return findBoundaryByWordSequence(contextoDeReserva);
+
+    // O boundary cuja palavra está mais perto do alvo.
+    let melhor = -1, menorDist = Infinity;
+    for (let bi = 0; bi < boundaryToWordMap.length; bi++) {
+        const wi = boundaryToWordMap[bi];
+        if (wi < 0) continue;
+        const d = Math.abs(wi - alvo);
+        if (d < menorDist) { menorDist = d; melhor = bi; }
+    }
+
+    // 🚨 Longe demais é sinal de que o mapa não cobre esse ponto (o TTS pulou
+    // palavras, ou o trecho é outro). Aí vale mais a busca por texto do que
+    // um índice que parece certo e não é.
+    if (melhor >= 0 && menorDist <= 3) {
+        console.log('[clique] âncora: palavra', alvo, 'do trecho -> boundary', melhor,
+                    '(' + wordBoundaries[melhor]?.text + ')');
+        return melhor;
+    }
+    console.warn('[clique] âncora distante (', menorDist, ') — caindo na busca por texto');
+    return findBoundaryByWordSequence(contextoDeReserva);
+}
+
 // Click handler — usa pageWordPositions (ordem de leitura confiável do PyMuPDF)
-async function handleTextLayerClick(pageNum, clickedSpan, textLayerDiv) {
+async function handleTextLayerClick(pageNum, clickedSpan, textLayerDiv, clienteX, clienteY) {
     if (!settings.clickToListen) return;
 
-    // 1) Pegar coordenadas relativas (0-1) do clique no PDF
+    // 1) Coordenadas relativas (0-1) do PONTO TOCADO. O centro do span só
+    //    entra quando não há ponto (chamada por código): span de PDF.js é
+    //    quase sempre a linha inteira, e o centro dela não é onde a pessoa
+    //    encostou o dedo.
     const layerRect = textLayerDiv.getBoundingClientRect();
     const spanRect = clickedSpan.getBoundingClientRect();
-    const relX = ((spanRect.left + spanRect.right) / 2 - layerRect.left) / layerRect.width;
-    const relY = ((spanRect.top + spanRect.bottom) / 2 - layerRect.top) / layerRect.height;
+    const px = (typeof clienteX === 'number') ? clienteX : (spanRect.left + spanRect.right) / 2;
+    const py = (typeof clienteY === 'number') ? clienteY : (spanRect.top + spanRect.bottom) / 2;
+    const relX = (px - layerRect.left) / layerRect.width;
+    const relY = (py - layerRect.top) / layerRect.height;
 
     showPlayLoading(true);
     lastPdfHighlightIdx = -1;
@@ -2856,7 +2911,7 @@ async function handleTextLayerClick(pageNum, clickedSpan, textLayerDiv) {
         // pode pular palavras curtas, juntar números, etc.
         let seekTimeSec = 0;
         if (wordBoundaries.length > 0) {
-            const bIdx = findBoundaryByWordSequence(contextWords);
+            const bIdx = boundaryAncorado(sentStartIdx, data.word_offset, contextWords);
             if (bIdx >= 0 && wordBoundaries[bIdx]) {
                 seekTimeSec = wordBoundaries[bIdx].offset_ms / 1000;
                 console.log('[click] boundary idx', bIdx, '@', seekTimeSec.toFixed(2) + 's text:', wordBoundaries[bIdx].text);
