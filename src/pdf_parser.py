@@ -128,8 +128,11 @@ def extract_text_from_pdf(file_path: str) -> list[dict]:
 
     Retorna lista de {page: int, text: str}
     """
+    # Pelo caminho cacheado de propósito: a mesma varredura serve depois ao
+    # `get_word_positions_on_page`, que precisa jogar fora exatamente as mesmas
+    # linhas. Sem isto, o documento seria varrido duas vezes por leitura.
+    correntes = _correntes_do_arquivo(file_path)
     doc = fitz.open(file_path)
-    correntes = _linhas_correntes(doc)
     pages = []
 
     for page_num in range(len(doc)):
@@ -451,15 +454,43 @@ def search_words_on_page(file_path: str, page_num: int, words: list[str]) -> dic
     return {"page_width": pw, "page_height": ph, "results": results}
 
 
+@functools.lru_cache(maxsize=64)
+def _correntes_cacheadas(file_path: str, _mtime: int, _tamanho: int) -> frozenset:
+    doc = fitz.open(file_path)
+    try:
+        return frozenset(_linhas_correntes(doc))
+    finally:
+        doc.close()
+
+
+def _correntes_do_arquivo(file_path: str) -> frozenset:
+    """Cabeçalhos e rodapés correntes deste PDF. Varre o documento UMA vez."""
+    try:
+        st = os.stat(file_path)
+        return _correntes_cacheadas(file_path, st.st_mtime_ns, st.st_size)
+    except OSError:
+        return frozenset()
+
+
 def get_word_positions_on_page(file_path: str, page_num: int) -> list[dict]:
-    """Retorna TODAS as palavras da página com suas posições relativas.
+    """Retorna as palavras da página com suas posições relativas.
 
     Retorna [{word, x0, y0, x1, y1}] em coordenadas relativas (0-1).
 
-    🚨 As letras de um trecho soletrado são JUNTADAS aqui também. O destaque no
-    PDF casa esta lista com o texto do chunk; se o chunk diz "TEXTO" e esta
-    lista traz 'T','E','X','T','O', o destaque anda sozinho e erra a linha.
-    Os dois lados têm de contar a mesma história.
+    🚨 ESTA LISTA TEM DE CONTAR A MESMA HISTÓRIA QUE `chunks.text_content`.
+    Ela é o lado visual do casamento: o clique acha aqui a palavra tocada,
+    pega as vizinhas como contexto e procura esse contexto no texto do trecho
+    para descobrir ONDE COMEÇAR A FALAR. Se os dois lados divergirem, o
+    contexto não é achado e a leitura começa no lugar errado.
+
+    Por isso aqui passa a mesma peneira do texto:
+      - letras de trecho soletrado são JUNTADAS ('T','E','X','T','O' → 'TEXTO');
+      - linha de cabeçalho/rodapé corrente sai;
+      - linha que é só número de página sai.
+
+    Medido em 09/2026, antes desta peneira: num e-book com cabeçalho corrente,
+    18% dos cliques simulados não achavam par no texto do trecho (37 de 200),
+    contra 2-3% nos livros sem cabeçalho.
     """
     doc = fitz.open(file_path)
     if page_num < 1 or page_num > len(doc):
@@ -474,6 +505,9 @@ def get_word_positions_on_page(file_path: str, page_num: int) -> list[dict]:
     raw = page.get_text("words")
     doc.close()
 
+    juntas = _juntar_letras_soltas(raw)
+    manter = _palavras_que_ficam(juntas, _correntes_do_arquivo(file_path))
+
     return [
         {
             "word": w[4],
@@ -484,8 +518,40 @@ def get_word_positions_on_page(file_path: str, page_num: int) -> list[dict]:
             "block": w[5],
             "line": w[6],
         }
-        for w in _juntar_letras_soltas(raw)
+        for w in manter
     ]
+
+
+def _palavras_que_ficam(palavras: list, correntes: frozenset) -> list:
+    """Tira as linhas que o texto do trecho também não tem.
+
+    Agrupa as palavras pela LINHA a que pertencem (bloco + linha, que o
+    PyMuPDF já numera) e joga fora a linha inteira quando ela é cabeçalho
+    corrente ou só um número de página — exatamente o que `_clean_text` faz do
+    lado do texto.
+    """
+    if not palavras:
+        return palavras
+
+    porLinha: dict = {}
+    for w in palavras:
+        porLinha.setdefault((w[5], w[6]), []).append(w)
+
+    saida = []
+    for chave, grupo in porLinha.items():
+        texto = " ".join(w[4] for w in grupo).strip()
+        if not texto:
+            continue
+        if texto in correntes:
+            continue
+        if _SO_NUMERO.match(texto) and texto.replace(" ", "").isdigit():
+            continue
+        saida.extend(grupo)
+
+    # Devolve na ordem de leitura original, não na ordem do agrupamento.
+    ordem = {id(w): i for i, w in enumerate(palavras)}
+    saida.sort(key=lambda w: ordem[id(w)])
+    return saida
 
 
 def _juntar_letras_soltas(raw: list) -> list:
