@@ -175,3 +175,60 @@ def test_voz_invalida_no_query_cai_na_padrao(client, cria_usuario, sobe_document
     r = client.post(f"/api/documents/{doc}/chunks/0/audio?voice=pt-PT-DuarteNeural", headers=headers)
     assert r.status_code == 200
     assert r.json()["voice"] == "pt-BR-AntonioNeural"
+
+
+# --- Kokoro como 4a voz ---------------------------------------------------
+
+def test_marcacao_do_kokoro_vira_o_formato_da_casa():
+    """O resto do app só entende offset_ms/duration_ms/text.
+
+    A diferença entre os dois motores tem de morrer no tts_service: o mapa de
+    destaque, o clique e a âncora não podem saber qual voz falou.
+    """
+    from src.tts_service import _marcas_para_boundaries
+    b = _marcas_para_boundaries([
+        {"word": "O", "start_time": 0.0667, "end_time": 0.0917},
+        {"word": "Espírito", "start_time": 0.1167, "end_time": 0.5917},
+    ])
+    assert len(b) == 2
+    assert b[0]["text"] == "O"
+    assert round(b[0]["offset_ms"]) == 67
+    assert round(b[1]["offset_ms"]) == 117
+    assert round(b[1]["duration_ms"]) == 475
+    # o formato do Edge traz offset em 100ns — quem lê os dois espera isso
+    assert b[0]["offset"] == int(0.0667 * 10_000_000)
+
+
+def test_marcacao_vazia_ou_torta_nao_derruba():
+    from src.tts_service import _marcas_para_boundaries
+    assert _marcas_para_boundaries([]) == []
+    b = _marcas_para_boundaries([
+        {"word": "", "start_time": 0, "end_time": 1},          # sem texto: fora
+        {"word": "ok", "start_time": "x", "end_time": 1},      # número torto: fora
+        {"word": "vale", "start_time": 1.0, "end_time": 1.5},
+    ])
+    assert [x["text"] for x in b] == ["vale"]
+
+
+def test_voz_do_kokoro_so_e_oferecida_com_o_motor_configurado(monkeypatch):
+    """🚨 Sem KOKORO_URL a voz não entra na lista E não é aceita.
+
+    Quem escolheu a Dora antes de o motor sair do ar continua ouvindo o livro
+    com a voz padrão, em vez de tomar erro a cada trecho.
+    """
+    import importlib
+    import src.tts_service as tts
+
+    monkeypatch.setenv("KOKORO_URL", "")
+    importlib.reload(tts)
+    assert not any(v["name"].startswith("kokoro:") for v in tts.VOZES_PT_BR)
+    assert tts.voz_valida("kokoro:pf_dora") == tts.VOZ_PADRAO
+
+    monkeypatch.setenv("KOKORO_URL", "http://kokoro-tts:8880")
+    importlib.reload(tts)
+    assert any(v["name"] == "kokoro:pf_dora" for v in tts.VOZES_PT_BR)
+    assert tts.voz_valida("kokoro:pf_dora") == "kokoro:pf_dora"
+    assert tts.e_kokoro("kokoro:pf_dora") and not tts.e_kokoro("pt-BR-AntonioNeural")
+
+    monkeypatch.delenv("KOKORO_URL", raising=False)
+    importlib.reload(tts)

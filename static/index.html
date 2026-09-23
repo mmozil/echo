@@ -2006,7 +2006,9 @@ async function abrirFolha(tipo) {
         ? voiceList.map(v => ({
             valor: v.name,
             rotulo: v.label || rotuloDaVoz(v.name),
-            sub: v.gender || '',
+            // O aviso vem do servidor (a voz do Kokoro demora 3x mais para
+            // gerar). Dizer ANTES de escolher, não depois de esperar.
+            sub: [v.gender, v.aviso].filter(Boolean).join(' · '),
             ativo: v.name === selectedVoice,
         }))
         : VELOCIDADES.map(v => ({
