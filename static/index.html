@@ -781,22 +781,30 @@ let playerIdleTimer = null;
 let chunkDurations = {}; // chunkIdx -> ms (preenchido conforme áudio carrega)
 const AVG_CHUNK_MS = 50000; // estimativa default ~50s por chunk
 
+// 🚨 UM estimador só, usado pelos três lugares. Antes o total supunha a MÉDIA
+// dos trechos já conhecidos e o decorrido supunha 50s fixos para cada trecho
+// pulado. Num livro de trechos curtos, 50s por trecho pulado inflava o
+// decorrido acima do total e a barra marcava ~99% no meio do livro — e some o
+// "-tempo restante", que é o que responde "dá tempo de terminar?". O defeito
+// só aparece quando se PULA, que é justamente o que o sumário clicável faz.
+function duracaoEstimadaDoTrecho(i) {
+    if (chunkDurations[i]) return chunkDurations[i];
+    const conhecidas = Object.values(chunkDurations);
+    if (!conhecidas.length) return AVG_CHUNK_MS;
+    return conhecidas.reduce((a, b) => a + b, 0) / conhecidas.length;
+}
+
 function getDocTotalMs() {
     if (!currentChunks.length) return 0;
-    const known = Object.values(chunkDurations);
-    if (!known.length) return currentChunks.length * AVG_CHUNK_MS;
-    const avg = known.reduce((a,b) => a+b, 0) / known.length;
     let total = 0;
-    for (let i = 0; i < currentChunks.length; i++) {
-        total += chunkDurations[i] || avg;
-    }
+    for (let i = 0; i < currentChunks.length; i++) total += duracaoEstimadaDoTrecho(i);
     return total;
 }
 
 function getDocCurrentMs() {
     let acc = 0;
     for (let i = 0; i < currentChunkIndex; i++) {
-        acc += chunkDurations[i] || AVG_CHUNK_MS;
+        acc += duracaoEstimadaDoTrecho(i);
     }
     return acc + (audio.currentTime || 0) * 1000;
 }
@@ -1085,6 +1093,9 @@ async function openDocument(docId) {
         currentDoc = d.document; currentChunks = d.chunks; currentChunkIndex = d.progress?.current_chunk||0;
         prefetchCache = {}; renderedPages = {}; pageWordPositions = {}; chunkTextCache = {}; chunkDurations = {};
         _ultimaFrase = null; _ultimaPaginaRolada = -1; _tocAtivo = -1;
+        // A busca era do livro ANTERIOR: a seta «próximo» levava para uma
+        // página de outro documento, e a contagem ficava na tela.
+        clearSearchHighlights();
 
         document.getElementById('readerTitle').textContent = currentDoc.title;
         document.getElementById('totalPages').textContent = currentDoc.total_pages;
@@ -1490,7 +1501,19 @@ function prefetchAhead(fromIdx) {
 }
 
 function pauseAudio() { audio.pause(); isPlaying=false; updatePlayButton(); stopHighlightLoop(); soltarWakeLock(); salvarProgresso(); resetPlayerIdle(); }
-function stopAudio() { _geracaoDeLeitura++; audio.pause(); audio.src=''; isPlaying=false; updatePlayButton(); stopHighlightLoop(); soltarWakeLock(); wordBoundaries=[]; prefetchCache={}; resetPlayerIdle(); }
+function stopAudio() {
+    _geracaoDeLeitura++;
+    audio.pause();
+    // 🚨 `audio.src = ''` NÃO limpa a fonte: a string vazia é resolvida contra
+    // a URL do documento, então o navegador vai buscar a PRÓPRIA PÁGINA e
+    // tentar tocá-la como mídia — requisição inútil e erro no console a cada
+    // vez que o leitor é fechado. Tirar o atributo e dar `load()` é o jeito
+    // certo de soltar o recurso.
+    audio.removeAttribute('src');
+    audio.load();
+    isPlaying=false; updatePlayButton(); stopHighlightLoop(); soltarWakeLock();
+    wordBoundaries=[]; boundaryToWordMap=[]; prefetchCache={}; resetPlayerIdle();
+}
 
 // =========================================================================
 // TOCAR COM A TELA APAGADA
@@ -1901,7 +1924,7 @@ async function seekToFrac(frac) {
     // Achar qual chunk contém targetMs
     let acc = 0, targetChunk = 0, localMs = 0;
     for (let i = 0; i < currentChunks.length; i++) {
-        const dur = chunkDurations[i] || AVG_CHUNK_MS;
+        const dur = duracaoEstimadaDoTrecho(i);   // o MESMO estimador do resto
         if (acc + dur >= targetMs) { targetChunk = i; localMs = targetMs - acc; break; }
         acc += dur;
     }
@@ -1990,7 +2013,16 @@ window.escolherNaFolha = escolherNaFolha;
 // O salto aceita o passo que o SISTEMA pedir (o card da tela de bloqueio
 // manda o seu em seekOffset); sem pedido, 10s, como os botões da tela.
 function skipBack(passo) { if(audio.src) audio.currentTime = Math.max(0, audio.currentTime - (passo || 10)); }
-function skipForward(passo) { if(audio.src) audio.currentTime = Math.min(audio.duration || 0, audio.currentTime + (passo || 10)); }
+function skipForward(passo) {
+    if (!audio.src) return;
+    // 🚨 `audio.duration || 0` virava ZERO enquanto a duração não tinha
+    // chegado (NaN no começo do trecho), e `Math.min(0, ...)` mandava o áudio
+    // para o INÍCIO: apertar "avançar 10s" logo depois de trocar de trecho
+    // voltava tudo. Sem duração conhecida, avança sem teto.
+    const alvo = audio.currentTime + (passo || 10);
+    const dur = audio.duration;
+    audio.currentTime = (isFinite(dur) && dur > 0) ? Math.min(dur - 0.05, alvo) : alvo;
+}
 
 let voiceList = [], voiceIdx = 0, selectedVoice = 'pt-BR-AntonioNeural';
 
@@ -2603,9 +2635,15 @@ function waitForAudioReady() {
 
 // Click handler genérico em .pdf-page (mobile/fallback) — sem text layer
 // Usa coordenadas do click e pageWordPositions
+// 🚨 Idempotente. Isto é chamado de loadPdfDocument, que roda a CADA documento
+// aberto: sem a trava, abrir três livros numa sessão deixava três ouvintes
+// vivos no mesmo #pdfView, e um único toque no parágrafo disparava três
+// leituras concorrentes — três POSTs de áudio e três `audio.src` brigando.
+let _cliqueDePaginaLigado = false;
 function attachPageClickHandlers() {
     const pv = document.getElementById('pdfView');
-    if (!pv) return;
+    if (!pv || _cliqueDePaginaLigado) return;
+    _cliqueDePaginaLigado = true;
     pv.addEventListener('click', async (e) => {
         if (!settings.clickToListen) return;
         const pageEl = e.target.closest('.pdf-page');
