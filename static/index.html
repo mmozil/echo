@@ -96,6 +96,18 @@
         .view-toggle-btn { padding: 5px 12px; border-radius: 6px; font-size: 12px; font-weight: 500; border: none; cursor: pointer; background: transparent; color: var(--slate); font-family: var(--font-b); transition: all 0.15s; }
         .view-toggle-btn.active { background: var(--white); color: var(--ink); box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
 
+        /* Zoom da página */
+        .zoom-ctrl { display: flex; align-items: center; background: var(--cloud); border-radius: 8px; padding: 3px; gap: 1px; flex-shrink: 0; }
+        .zoom-ctrl.hidden { display: none; }
+        .zoom-btn { width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; border: none; background: transparent; color: var(--slate); cursor: pointer; border-radius: 6px; }
+        .zoom-btn:hover { background: var(--white); color: var(--ink); }
+        .zoom-btn:disabled { opacity: .35; cursor: default; }
+        .zoom-btn:disabled:hover { background: transparent; color: var(--slate); }
+        /* O número é botão: tocar nele volta ao normal, que é a saída de quem
+           se perdeu no zoom. Largura fixa para a barra não dançar a cada passo. */
+        .zoom-nivel { min-width: 44px; padding: 0 4px; height: 24px; border: none; background: transparent; color: var(--slate); font-size: 11px; font-family: var(--font-m); cursor: pointer; border-radius: 6px; }
+        .zoom-nivel:hover { background: var(--white); color: var(--ink); }
+
         /* Page indicator */
         .page-indicator { display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--slate); flex-shrink: 0; }
         .page-indicator input { width: 36px; text-align: center; border: 1px solid var(--border); border-radius: 4px; padding: 2px 4px; font-size: 12px; font-family: var(--font-m); background: var(--snow); color: var(--ink); -moz-appearance: textfield; }
@@ -143,9 +155,9 @@
         .thumb-num { position: absolute; bottom: 2px; right: 4px; font-size: 9px; color: var(--mist); background: rgba(255,255,255,0.8); padding: 1px 4px; border-radius: 3px; }
 
         /* PDF view - canvas-based */
-        .pdf-main { flex: 1; overflow-y: auto; display: flex; flex-direction: column; align-items: center; padding: 24px; gap: 8px; }
+        .pdf-main { flex: 1; overflow-y: auto; display: flex; flex-direction: column; align-items: center; padding: 24px; gap: 8px;  overflow-x: auto; }
         .pdf-main.hidden { display: none; }
-        .pdf-page { max-width: 700px; width: 100%; border-radius: 4px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); background: white; position: relative; }
+        .pdf-page { max-width: calc(700px * var(--pdf-zoom, 1)); width: 100%; border-radius: 4px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); background: white; position: relative; }
         .pdf-page canvas { width: 100%; display: block; border-radius: 4px; }
         .pdf-page-num { text-align: center; font-size: 11px; color: var(--mist); padding: 6px 0 16px; }
 
@@ -513,7 +525,11 @@
 
             /* SVG highlight: garantir que renderiza no mobile */
             .pdf-hl-svg { display: block; }
-            .pdf-page { max-width: 100%; }
+            /* No celular a base e' a largura da tela, nao 700px. O zoom
+               multiplica a partir dai: acima de 100% a pagina passa da
+               tela e a rolagem lateral entra — que e' justamente o que
+               se quer quando a letra esta pequena demais para ler. */
+            .pdf-page { max-width: calc(100% * var(--pdf-zoom, 1)); }
         }
 
     </style>
@@ -569,6 +585,16 @@
                 <input type="number" id="pageInput" min="1" value="1" onchange="goToPageInput(this.value)" onkeydown="if(event.key==='Enter')this.blur()">
                 <span>/</span>
                 <span id="totalPages">0</span>
+            </div>
+            <!-- Zoom da página: só faz sentido na vista de PDF, some na de texto -->
+            <div class="zoom-ctrl" id="zoomCtrl">
+                <button class="zoom-btn" onclick="mudarZoom(-1)" title="Diminuir" aria-label="Diminuir">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                </button>
+                <button class="zoom-nivel" id="zoomNivel" onclick="zoomPadrao()" title="Voltar ao tamanho normal">100%</button>
+                <button class="zoom-btn" onclick="mudarZoom(1)" title="Aumentar" aria-label="Aumentar">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                </button>
             </div>
             <div class="view-toggle">
                 <button class="view-toggle-btn active" id="togglePdf" onclick="setView('pdf')">
@@ -814,7 +840,7 @@ function getDocCurrentMs() {
 const audio = document.getElementById('audioPlayer');
 
 // === SETTINGS ===
-const defaultSettings = { theme: 'light', highlight: true, autoplay: false, clickToListen: true, autoHide: false };
+const defaultSettings = { theme: 'light', highlight: true, autoplay: false, clickToListen: true, autoHide: false, zoom: 1 };
 let settings = { ...defaultSettings, ...JSON.parse(localStorage.getItem('echo_settings') || '{}') };
 
 function saveSetting(key, val) { settings[key] = val; localStorage.setItem('echo_settings', JSON.stringify(settings)); if (key === 'theme') applyTheme(); if (key === 'autoHide') resetPlayerIdle(); }
@@ -1115,6 +1141,9 @@ async function openDocument(docId) {
         // No celular o sumário nasce fechado: aberto, ele cobre a leitura.
         document.getElementById('readerSidebar')
             ?.classList.toggle('hidden', window.innerWidth <= 640);
+        // O zoom escolhido vale ANTES de a primeira página ser desenhada —
+        // senão ela nasce em 700px e só ficaria certa no próximo redesenho.
+        aplicarZoom();
 
         updateLoading('Renderizando...', `${currentDoc.total_pages} páginas`);
 
@@ -1368,10 +1397,139 @@ function ligarRolagemDoLeitor() {
     if (textView) ['scroll','wheel'].forEach(ev => textView.addEventListener(ev, marcarMao, {passive:true}));
 }
 
-function scrollPdfToPage(page) {
+// 🚨 CENTRALIZAR A PÁGINA NÃO É MOSTRAR O QUE ESTÁ SENDO LIDO.
+// `block:'center'` põe o MEIO da página no meio da tela. Como a página do
+// e-book é bem mais alta que a janela, a leitura começava no título, lá em
+// cima, e o título ficava FORA da vista: a voz lia uma coisa e a tela
+// mostrava outra, uns parágrafos adiante.
+// Agora quem manda é a LINHA que está sendo lida, quando se sabe onde ela
+// está. Sem essa informação, mostra-se o TOPO da página — que é onde a
+// leitura de uma página nova quase sempre começa —, nunca o meio.
+function scrollPdfToPage(page, yRelativo) {
     const el = document.getElementById(`pdf-page-${page}`);
-    if (el) { programmaticScroll=true; el.scrollIntoView({behavior:'smooth',block:'center'}); setTimeout(()=>{programmaticScroll=false;},1000); }
+    if (!el) return;
+    const pv = document.getElementById('pdfView');
+    programmaticScroll = true;
+
+    if (typeof yRelativo === 'number' && pv) {
+        // Põe a linha a um terço da altura: sobra contexto acima e o olho
+        // acompanha sem a linha colar no topo.
+        const alvo = el.offsetTop + yRelativo * el.offsetHeight - pv.clientHeight / 3;
+        pv.scrollTo({ top: Math.max(0, alvo), behavior: 'smooth' });
+    } else {
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+    setTimeout(() => { programmaticScroll = false; }, 1000);
 }
+
+// Onde, na página, está a palavra que está sendo falada agora (0 a 1).
+// Devolve undefined quando ainda não dá para saber — e aí quem chama cai no
+// topo da página em vez de inventar uma posição.
+function alturaDoDestaque(pageNum) {
+    if (!wordBoundaries.length) return undefined;
+    const palavras = pageWordPositions[pageNum];
+    if (!palavras || !palavras.length) return undefined;
+    const ms = audio.currentTime * 1000;
+    let bi = -1;
+    for (let i = 0; i < wordBoundaries.length; i++) {
+        const b = wordBoundaries[i];
+        if (ms >= b.offset_ms) bi = i; else break;
+    }
+    if (bi < 0) bi = 0;
+    const wi = boundaryToWordMap[bi];
+    const alvo = (wi >= 0 ? wi : bi) + (_deslocamentoDaPagina || 0);
+    const w = palavras[Math.min(Math.max(alvo, 0), palavras.length - 1)];
+    return w ? (w.y0 + w.y1) / 2 : undefined;
+}
+
+// =========================================================================
+// ZOOM DA PÁGINA
+//
+// A página era travada em 700px. Quem lê num monitor grande ficava com a
+// letra pequena no meio da tela, e quem lê no celular não tinha como
+// aproximar. O zoom multiplica essa base.
+//
+// 🚨 Mudar só o CSS BORRA. O canvas é desenhado uma vez, no tamanho que a
+// página tinha na hora (`displayWidth * devicePixelRatio`); esticar por CSS
+// estica o bitmap. Por isso cada mudança REDESENHA as páginas — mas só as
+// que estão à vista, senão são 148 renderizações de uma vez.
+// =========================================================================
+
+const ZOOM_PASSOS = [0.75, 0.9, 1, 1.15, 1.35, 1.6, 2];
+
+function zoomAtual() {
+    const z = Number(settings.zoom);
+    return ZOOM_PASSOS.includes(z) ? z : 1;
+}
+
+function aplicarZoom() {
+    const z = zoomAtual();
+    document.documentElement.style.setProperty('--pdf-zoom', z);
+    const rotulo = document.getElementById('zoomNivel');
+    if (rotulo) rotulo.textContent = Math.round(z * 100) + '%';
+    const i = ZOOM_PASSOS.indexOf(z);
+    const botoes = document.querySelectorAll('#zoomCtrl .zoom-btn');
+    if (botoes[0]) botoes[0].disabled = i <= 0;
+    if (botoes[1]) botoes[1].disabled = i >= ZOOM_PASSOS.length - 1;
+}
+
+function mudarZoom(passo) {
+    const i = ZOOM_PASSOS.indexOf(zoomAtual());
+    const novo = ZOOM_PASSOS[Math.max(0, Math.min(ZOOM_PASSOS.length - 1, i + passo))];
+    if (novo === zoomAtual()) return;
+    saveSetting('zoom', novo);
+    aplicarZoom();
+    redesenharPaginasAVista();
+}
+
+function zoomPadrao() {
+    if (zoomAtual() === 1) return;
+    saveSetting('zoom', 1);
+    aplicarZoom();
+    redesenharPaginasAVista();
+}
+
+// Redesenha TODAS as páginas que já estavam desenhadas — não só as à vista.
+//
+// 🚨 A primeira versão destruía o canvas de todas e redesenhava só as
+// visíveis: as demais ficavam EM BRANCO, porque o IntersectionObserver só
+// dispara quando a interseção MUDA, e uma página que já estava à vista e
+// continuou à vista nunca gera evento novo. Medido: o segundo clique no zoom
+// deixava a página com canvas 300 (o padrão do elemento) e zero spans.
+// Redesenhar todas é barato: são ~7 desenhadas por vez, não as 148.
+let _redesenhoPendente = null;
+function redesenharPaginasAVista() {
+    clearTimeout(_redesenhoPendente);
+    _redesenhoPendente = setTimeout(() => {
+        if (!pdfDoc) return;
+        const aVista = [];
+        for (const chave of Object.keys(renderedPages)) {
+            const n = parseInt(chave);
+            const el = document.getElementById(`pdf-page-${n}`);
+            if (!el) continue;
+            aVista.push(n);
+            // 🚨 A camada de texto é ACRESCENTADA a cada desenho. Sem tirar a
+            // antiga, o clique passa a ter duas camadas sobrepostas.
+            el.querySelectorAll('.pdf-text-layer').forEach(c => c.remove());
+            // 🚨 E o CANVAS tem de ser NOVO. O PDF.js recusa desenhar duas
+            // vezes no mesmo elemento — "Cannot use the same canvas during
+            // multiple render() operations" — e o erro era engolido pelo
+            // catch: a página ficava sem camada de texto (clique morto) e com
+            // o bitmap velho esticado (borrado). Trocar o nó zera isso.
+            const velho = document.getElementById(`pdf-canvas-${n}`);
+            if (velho) {
+                const novo = document.createElement('canvas');
+                novo.id = velho.id;
+                velho.replaceWith(novo);
+            }
+            renderedPages[n] = false;
+        }
+        aVista.forEach(n => renderPdfPage(n));
+    }, 120);
+}
+
+window.mudarZoom = mudarZoom;
+window.zoomPadrao = zoomPadrao;
 
 function setView(v) {
     currentView = v;
@@ -1379,13 +1537,16 @@ function setView(v) {
     document.getElementById('toggleText').classList.toggle('active', v==='text');
     document.getElementById('pdfView').classList.toggle('hidden', v!=='pdf');
     document.getElementById('textView').classList.toggle('hidden', v!=='text');
+    // Zoom é da página do PDF: na vista de texto não tem o que aproximar.
+    document.getElementById('zoomCtrl')?.classList.toggle('hidden', v !== 'pdf');
 }
 
 // === SCROLL TO LISTENING ===
 function scrollToCurrentReading() {
     userScrolling = false;
     if (currentView === 'pdf' && currentChunks[currentChunkIndex]) {
-        scrollPdfToPage(currentChunks[currentChunkIndex].page);
+        const pg = currentChunks[currentChunkIndex].page;
+        scrollPdfToPage(pg, alturaDoDestaque(pg));
     } else if (currentView === 'text') {
         const active = document.querySelector('#textView .word.active');
         if (active) active.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -1493,6 +1654,7 @@ async function playCurrentChunk(fracaoInicial = 0) {
         // buildBoundaryMap só lê textContent dos spans, e eles existem de forma
         // síncrona logo após innerHTML: não há nada a esperar aqui.
         wordBoundaries = data.boundaries || [];
+        _deslocamentoDaPagina = data.word_offset || 0;
         _sentenceRanges = [];
         if (data.text) renderTextWithWords(data.text);
         buildBoundaryMap();
@@ -1710,6 +1872,7 @@ function normalizarPalavra(s) {
 let _sentenceRanges = [];
 let _ultimaFrase = null;        // última frase realçada com par válido
 let _ultimaPaginaRolada = -1;   // evita rolar o PDF 20 vezes por segundo
+let _deslocamentoDaPagina = 0;  // palavras da página antes deste trecho
 function buildSentenceRanges(words) {
     _sentenceRanges = [];
     let start = 0;
@@ -1768,7 +1931,7 @@ function updateHighlight() {
     // como programmaticScroll estava ligado o gesto nem era reconhecido.
     if (currentView==='pdf' && currentChunks[currentChunkIndex] && !userScrolling) {
         const pg = currentChunks[currentChunkIndex].page;
-        if (pg !== _ultimaPaginaRolada) { _ultimaPaginaRolada = pg; scrollPdfToPage(pg); }
+        if (pg !== _ultimaPaginaRolada) { _ultimaPaginaRolada = pg; scrollPdfToPage(pg, alturaDoDestaque(pg)); }
     }
 
     // PDF highlight
@@ -2077,10 +2240,29 @@ async function cycleVoice() {
     await aplicarVoz(voiceList[(voiceIdx + 1) % voiceList.length].name);
 }
 
+// =========================================================================
+// TROCAR DE VOZ SEM PARAR DE LER
+//
+// A troca fazia `await playCurrentChunk()`: PARAVA o áudio e esperava o
+// servidor gerar o trecho na voz nova. Com uma voz rápida é ~1 s e ninguém
+// nota. Com a Dora (Kokoro) são 13 a 20 s DE SILÊNCIO, e de fora parece que o
+// app travou.
+//
+// 🚨 Nenhuma voz troca em zero segundo — o áudio naquela voz ainda não
+// existe. O que dá para fazer é não COBRAR a espera do leitor: a voz atual
+// segue falando, a nova é preparada por baixo, e a troca acontece quando
+// está pronta. O rótulo e o ✓ da folha mudam na hora, que é o que responde
+// "o app me ouviu".
+// =========================================================================
+
+let _trocaDeVoz = 0;
+
 async function aplicarVoz(nome) {
     if (!voiceList.length) await loadVoices();
     const i = voiceList.findIndex(v => v.name === nome);
     if (i < 0) return;
+
+    const anterior = selectedVoice;
     voiceIdx = i;
     selectedVoice = nome;
 
@@ -2088,8 +2270,8 @@ async function aplicarVoz(nome) {
     // continuaríamos ouvindo a voz de antes e pareceria que a troca falhou.
     prefetchCache = {};
 
+    // --- o que é instantâneo, acontece agora ---
     aplicaRotuloDaVoz();
-    showToast('Voz: ' + rotuloDaVoz(selectedVoice));
 
     // Preferência é da conta, não do navegador: vale no app e após o logout.
     fetch('/api/voices/selected', {
@@ -2098,12 +2280,32 @@ async function aplicarVoz(nome) {
         body: JSON.stringify({ voice: selectedVoice }),
     }).catch(() => {});
 
-    // Retoma o mesmo trecho na voz nova, guardando o ponto da leitura.
-    if (audio.src) {
+    if (!audio.src || anterior === nome) { showToast('Voz: ' + rotuloDaVoz(nome)); return; }
+
+    const lenta = !!(voiceList[i] || {}).aviso;
+    showToast('Voz: ' + rotuloDaVoz(nome) + (lenta ? ' — preparando, a leitura continua' : ''));
+
+    const geracao = ++_trocaDeVoz;
+    const trechoPedido = currentChunkIndex;
+    try {
+        // Pede a voz nova SEM tocar no que está tocando.
+        const r = await fetch(`/api/documents/${currentDoc.id}/chunks/${trechoPedido}/audio?voice=${encodeURIComponent(nome)}`, { method: 'POST' });
+        const data = await r.json();
+
+        if (geracao !== _trocaDeVoz) return;              // trocou de novo no meio
+        if (!data.audio_url) throw new Error(data.detail || 'Erro ao gerar');
+        // O trecho virou enquanto gerava? Então o seguinte já nasceu na voz
+        // nova por conta própria, e trocar agora seria voltar atrás.
+        if (currentChunkIndex !== trechoPedido) return;
+
+        prefetchCache[trechoPedido] = data;               // daqui playCurrentChunk pega sem rede
         const fracao = audio.duration ? (audio.currentTime / audio.duration) : 0;
         const estavaTocando = isPlaying;
         await playCurrentChunk(fracao);
         if (!estavaTocando) pauseAudio();
+        if (lenta) showToast(rotuloDaVoz(nome) + ' entrou');
+    } catch (e) {
+        if (geracao === _trocaDeVoz) showToast('Não consegui trocar para ' + rotuloDaVoz(nome));
     }
 }
 
@@ -2148,7 +2350,11 @@ function updateUI() {
     updateChapterDisplay();
     refreshPlayerTime();
     loadChunkText(currentChunkIndex);
-    if (currentChunks[currentChunkIndex]) { scrollPdfToPage(currentChunks[currentChunkIndex].page); }
+    if (currentChunks[currentChunkIndex]) {
+        const pg = currentChunks[currentChunkIndex].page;
+        _ultimaPaginaRolada = pg;          // já rolei: o laço não precisa rolar de novo
+        scrollPdfToPage(pg, alturaDoDestaque(pg));
+    }
 }
 
 function fmt(s) {
