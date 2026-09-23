@@ -20,6 +20,7 @@ from fastapi import FastAPI, UploadFile, File, HTTPException, Query, Request, Re
 from fastapi.responses import FileResponse, StreamingResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.gzip import GZipMiddleware
+from starlette.concurrency import run_in_threadpool
 from pydantic import BaseModel
 
 from src.database import init_db, create_document, list_documents, get_document_for_user, delete_document
@@ -42,7 +43,29 @@ UPLOAD_DIR = os.environ.get("UPLOAD_DIR", "/app/data/uploads")
 AUDIO_DIR = os.environ.get("AUDIO_DIR", "/app/data/audio")
 
 app = FastAPI(title="Echo", version="1.0.0", docs_url="/api/docs")
-app.add_middleware(GZipMiddleware, minimum_size=500)
+
+
+# 🚨 GZip NÃO passa por cima de mídia. Medido: um MP3 de 40.004 bytes saía
+# com `content-encoding: gzip` e 40.037 — CRESCIA, porque MP3 já é comprimido.
+# Pior que o desperdício de CPU: a resposta 206 de um pedido `Range` também
+# vinha gzipada, e é de Range que o <audio> depende para retomar o buffer
+# quando a aba volta do segundo plano ou o celular destrava. Aqui a mídia
+# passa intacta e o JSON/HTML continua comprimido.
+_ROTA_DE_MIDIA = re.compile(r"^/api/(audio/|covers/|documents/[^/]+/(pdf$|pages/))")
+
+
+class GZipSemMidia:
+    def __init__(self, app, minimum_size: int = 500):
+        self.app = app
+        self.comprimido = GZipMiddleware(app, minimum_size=minimum_size)
+
+    async def __call__(self, scope, receive, send):
+        if scope.get("type") == "http" and _ROTA_DE_MIDIA.match(scope.get("path", "")):
+            return await self.app(scope, receive, send)
+        return await self.comprimido(scope, receive, send)
+
+
+app.add_middleware(GZipSemMidia, minimum_size=500)
 
 # Servir arquivos estáticos (fontes, JS, CSS)
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -130,6 +153,15 @@ _NO_CACHE = {"Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "
 # Sem isto a Cloudflare cachearia /api/covers/*.png e /pages/*.png pela extensão
 # e serviria a capa de um usuário para outro, com a rota já protegida.
 _MEDIA_PRIVADA = {"Cache-Control": "private, no-store, max-age=0", "Pragma": "no-cache"}
+
+# O MP3 é o caso à parte: `no-store` proibia até o cache do PRÓPRIO navegador,
+# então voltar dez segundos, repetir um trecho ou o <audio> rebuscar dado
+# depois de o sistema suspender a aba significava ida nova ao servidor — e se
+# a rede oscilasse justo aí (celular saindo do bloqueio), não havia cópia local
+# para cair e a leitura parava. `private` mantém o arquivo fora de qualquer
+# cache compartilhado (era esse o risco com a Cloudflare); o conteúdo é
+# imutável por construção, porque o nome carrega o hash de texto+voz.
+_AUDIO_PRIVADO = {"Cache-Control": "private, max-age=86400", "Pragma": "private"}
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -250,7 +282,7 @@ async def serve_page(doc_id: str, page_num: int, request: Request):
         pdf_path = os.path.join(UPLOAD_DIR, doc["filename"])
         if not os.path.exists(pdf_path):
             raise HTTPException(404, "PDF não encontrado")
-        ok = render_page(pdf_path, page_num, page_path)
+        ok = await run_in_threadpool(render_page, pdf_path, page_num, page_path)
         if not ok:
             raise HTTPException(404, "Página inválida")
 
@@ -266,7 +298,7 @@ async def get_document_toc(doc_id: str, request: Request):
     pdf_path = os.path.join(UPLOAD_DIR, doc["filename"])
     if not os.path.exists(pdf_path):
         return {"toc": []}
-    toc = get_toc(pdf_path)
+    toc = await run_in_threadpool(get_toc, pdf_path)
     return {"toc": toc, "total_pages": doc["total_pages"]}
 
 
@@ -279,7 +311,7 @@ async def get_page_words(doc_id: str, page_num: int, request: Request):
     pdf_path = os.path.join(UPLOAD_DIR, doc["filename"])
     if not os.path.exists(pdf_path):
         return {"words": []}
-    words = get_word_positions_on_page(pdf_path, page_num)
+    words = await run_in_threadpool(get_word_positions_on_page, pdf_path, page_num)
     return {"words": words, "page": page_num}
 
 
@@ -515,9 +547,9 @@ async def upload_document(request: Request, file: UploadFile = File(...)):
 
     # Extrair metadados e texto
     try:
-        info = get_pdf_info(file_path)
-        pages = extract_text_from_pdf(file_path)
-        chunks = chunk_pages(pages)
+        info = await run_in_threadpool(get_pdf_info, file_path)
+        pages = await run_in_threadpool(extract_text_from_pdf, file_path)
+        chunks = await run_in_threadpool(chunk_pages, pages)
     except Exception as e:
         os.remove(file_path)
         raise HTTPException(400, f"Erro ao processar PDF: {str(e)}")
@@ -543,7 +575,7 @@ async def upload_document(request: Request, file: UploadFile = File(...)):
 
     # Extrair capa (primeira página como PNG)
     cover_path = os.path.join(COVERS_DIR, f"{doc_id}.png")
-    has_cover = extract_cover(file_path, cover_path)
+    has_cover = await run_in_threadpool(extract_cover, file_path, cover_path)
     logger.info("UPLOAD %s — user=%s cover=%s path=%s", doc_id, user["id"], has_cover, cover_path)
 
     # Pré-gerar áudio de TODOS os chunks em background, na voz do dono
@@ -559,14 +591,34 @@ async def upload_document(request: Request, file: UploadFile = File(...)):
     }
 
 
+# Uma pré-geração por documento. Sem isto, cada abertura enfileirava outra
+# volta inteira sobre os mesmos trechos — e, como `ready` nunca subia (o bug
+# abaixo), isso acontecia SEMPRE, com várias voltas simultâneas concorrendo
+# pelos mesmos arquivos.
+_pregeracao_em_curso: set[str] = set()
+
+
 async def _pregenerate_all_audio(doc_id: str, voice: str = ""):
     """Pré-gera áudio de todos os chunks em background, na voz escolhida."""
-    chunks = get_chunks(doc_id)
-    for chunk in chunks:
-        try:
-            await generate_audio(chunk["text_content"], chunk["id"], voice=voice or None)
-        except Exception:
-            pass  # Continuar mesmo se um falhar
+    if doc_id in _pregeracao_em_curso:
+        return
+    _pregeracao_em_curso.add(doc_id)
+    try:
+        chunks = get_chunks(doc_id)
+        for chunk in chunks:
+            try:
+                r = await generate_audio(chunk["text_content"], chunk["id"], voice=voice or None)
+                # 🚨 O MP3 ia para o disco e o banco NUNCA ficava sabendo:
+                # `audio_path` seguia NULL, `audio_ready` seguia 0 de N para
+                # sempre (a barra do app não andava), e o `if ready == 0` da
+                # rota de detalhe disparava a pré-geração inteira DE NOVO a
+                # cada abertura do documento.
+                palavras = len(chunk["text_content"].split())
+                update_chunk_audio(chunk["id"], r["path"], int(palavras / 150 * 60000))
+            except Exception as e:
+                logger.warning("PREGERACAO %s trecho %s falhou: %s", doc_id, chunk["id"], e)
+    finally:
+        _pregeracao_em_curso.discard(doc_id)
 
 
 # --- Listar documentos ---
@@ -756,7 +808,7 @@ async def serve_audio(filename: str, request: Request):
     if not os.path.exists(filepath):
         raise HTTPException(404, "Arquivo não encontrado")
     media = "application/json" if filename.endswith(".json") else "audio/mpeg"
-    return FileResponse(filepath, media_type=media, headers=_MEDIA_PRIVADA)
+    return FileResponse(filepath, media_type=media, headers=_AUDIO_PRIVADO)
 
 
 # --- Obter texto de um chunk (para highlight) ---

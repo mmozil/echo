@@ -1,12 +1,28 @@
 """Serviço TTS usando Microsoft Edge TTS — voz pt-BR-AntonioNeural (grátis)."""
 
 import edge_tts
+import asyncio
+import logging
 import os
 import json
 import hashlib
 
+logger = logging.getLogger("echo.tts")
+
 VOICE = os.environ.get("TTS_VOICE", "pt-BR-AntonioNeural")
 AUDIO_DIR = os.environ.get("AUDIO_DIR", "/app/data/audio")
+
+# 🚨 O edge-tts fala com um servidor da Microsoft e NÃO tinha prazo nem
+# segunda tentativa. Se aquele socket pendurasse, o `await` não voltava: a
+# requisição do trecho ficava aberta para sempre, o front esperava o JSON que
+# nunca vinha, e o player simplesmente parava no fim do trecho anterior — sem
+# mensagem, sem nova tentativa. Da cadeira do leitor, é "ele parou de falar".
+TTS_TIMEOUT_S = int(os.environ.get("TTS_TIMEOUT_S", "45"))
+TTS_TENTATIVAS = int(os.environ.get("TTS_TENTATIVAS", "3"))
+
+# Dois livros grandes subindo ao mesmo tempo abririam dezenas de conexões
+# simultâneas com a Microsoft. Três por vez já satura a banda útil.
+_vagas = asyncio.Semaphore(int(os.environ.get("TTS_SIMULTANEOS", "3")))
 
 # As três vozes pt-BR do Edge — e só elas. As de Portugal
 # (pt-PT-DuarteNeural, pt-PT-RaquelNeural) ficam de fora de propósito: o
@@ -46,9 +62,51 @@ async def generate_audio(text: str, chunk_id: str, rate: str = "+0%", pitch: str
 
     os.makedirs(AUDIO_DIR, exist_ok=True)
 
+    audio_data, boundaries = await _falar_com_prazo(text, use_voice, rate, pitch)
+
+    # 🚨 GRAVAÇÃO ATÔMICA, e o MP3 só depois do JSON. O par tem de aparecer
+    # inteiro ou não aparecer: um arquivo truncado (queda no meio da escrita)
+    # ficaria no cache para sempre, porque a checagem lá em cima só olha se o
+    # arquivo EXISTE — e todo play daquele trecho voltaria quebrado.
+    _gravar_atomico(boundaries_path, json.dumps(boundaries, ensure_ascii=False).encode("utf-8"))
+    _gravar_atomico(filepath, audio_data)
+
+    return {"path": filepath, "filename": filename, "boundaries_file": boundaries_filename, "cached": False}
+
+
+def _gravar_atomico(destino: str, dados: bytes):
+    parcial = destino + ".parcial"
+    with open(parcial, "wb") as f:
+        f.write(dados)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(parcial, destino)
+
+
+async def _falar_com_prazo(text: str, voice: str, rate: str, pitch: str) -> tuple[bytes, list]:
+    """Chama o edge-tts com prazo e segunda chance."""
+    ultimo_erro = None
+    for tentativa in range(1, TTS_TENTATIVAS + 1):
+        try:
+            async with _vagas:
+                return await asyncio.wait_for(
+                    _falar(text, voice, rate, pitch), timeout=TTS_TIMEOUT_S
+                )
+        except asyncio.TimeoutError as e:
+            ultimo_erro = e
+            logger.warning("TTS tentativa %d/%d estourou %ds", tentativa, TTS_TENTATIVAS, TTS_TIMEOUT_S)
+        except Exception as e:
+            ultimo_erro = e
+            logger.warning("TTS tentativa %d/%d falhou: %s", tentativa, TTS_TENTATIVAS, e)
+        if tentativa < TTS_TENTATIVAS:
+            await asyncio.sleep(1.5 * tentativa)   # espera crescente
+    raise RuntimeError(f"TTS falhou após {TTS_TENTATIVAS} tentativas: {ultimo_erro}")
+
+
+async def _falar(text: str, voice: str, rate: str, pitch: str) -> tuple[bytes, list]:
     communicate = edge_tts.Communicate(
         text=text,
-        voice=use_voice,
+        voice=voice,
         rate=rate,
         pitch=pitch,
         boundary="WordBoundary",
@@ -56,11 +114,11 @@ async def generate_audio(text: str, chunk_id: str, rate: str = "+0%", pitch: str
 
     # Stream para capturar áudio + word boundaries
     boundaries = []
-    audio_data = b""
+    pedacos = []
 
     async for message in communicate.stream():
         if message["type"] == "audio":
-            audio_data += message["data"]
+            pedacos.append(message["data"])
         elif message["type"] == "WordBoundary":
             boundaries.append({
                 "offset": message["offset"],           # microsegundos desde início
@@ -70,15 +128,10 @@ async def generate_audio(text: str, chunk_id: str, rate: str = "+0%", pitch: str
                 "duration_ms": message["duration"] / 10000,
             })
 
-    # Salvar áudio
-    with open(filepath, "wb") as f:
-        f.write(audio_data)
-
-    # Salvar word boundaries
-    with open(boundaries_path, "w", encoding="utf-8") as f:
-        json.dump(boundaries, f, ensure_ascii=False)
-
-    return {"path": filepath, "filename": filename, "boundaries_file": boundaries_filename, "cached": False}
+    audio = b"".join(pedacos)
+    if not audio:
+        raise RuntimeError("TTS devolveu áudio vazio")
+    return audio, boundaries
 
 
 async def generate_audio_stream(text: str, rate: str = "+0%", pitch: str = "+0Hz", voice: str = None):
