@@ -153,7 +153,7 @@ prazo). O uso renova, então quem lê todo dia nunca é deslogado.
   segundo do deploy — quase todas passavam de 30 dias. Contando de agora, o
   risco antigo morre igual, só que sem derrubar ninguém no meio da leitura.
 
-### Vozes (3 pt-BR, escolha por conta)
+### Vozes (4 pt-BR, escolha por conta)
 
 `VOZES_PT_BR` em `src/tts_service.py` — **Francisca**, **Antônio**, **Thalita**.
 As de Portugal (`pt-PT-*`) ficam de fora: sotaque europeu se ouve na hora. A
@@ -174,6 +174,39 @@ nem oferecer voz que o resto do código recusa (`voz_valida()`).
   documento, e ele varre `{chunk_id}_*` para não deixar MP3 órfão de outra voz.
 - 🚨 Ao trocar de voz o front **limpa o prefetch**: os próximos trechos já
   tinham sido baixados na voz antiga.
+
+#### Dora — a 4ª voz, pelo Kokoro (09/2026)
+
+Dois motores convivem. `kokoro:pf_dora` é servida pelo container **`kokoro-tts`
+que já roda para o Tier Agent** (5 GB / 6 vCPU, rede `coolify`) — RAM extra
+zero, custo zero, sem chave.
+
+| | edge-tts | Kokoro (Dora) |
+|---|---|---|
+| trecho de ~1.000 caracteres | **~4 s** | 12–20 s |
+| marcação de palavra | aproximada | **1 para 1, exata** |
+
+- 🚨 **A marcação do Kokoro é MELHOR.** `/dev/captioned_speech` devolve uma
+  marcação por palavra, na grafia exata do texto: medido 177 para 177, e o
+  `boundaryToWordMap` sai **identidade**. O `WordBoundary` do Edge não casa
+  1 para 1 (89 para ~100 palavras, 12 delas de um caractere) e obriga o front
+  a casar por aproximação com janela de 15.
+- 🚨 **A resposta é NDJSON**, não um JSON só: áudio em base64 pedaço a pedaço,
+  marcações espalhadas pelas linhas. `json.loads()` no corpo inteiro estoura
+  com «Extra data». O concatenado toca: 63,5 s de áudio com a última marcação
+  em 62,6 s.
+- 🚨 **Sem `KOKORO_URL` a voz não é oferecida E não é aceita** — quem escolheu
+  a Dora antes de o motor sair do ar volta para a padrão e continua ouvindo,
+  em vez de tomar erro a cada trecho.
+- 🚨 **O container capado morre por OOM ao paralelizar** (no Tier Agent, a
+  2 GB, caiu servindo 4 frases juntas). Por isso o mesmo semáforo de
+  simultâneos do Edge vale aqui, e pesa mais.
+- O preço é o tempo, e ele **aparece na tela**: a voz vem com o aviso «gera
+  mais devagar», dito antes de escolher. Livro de 148 trechos leva ~30 min de
+  pré-geração contra ~10 min do Edge — mas é em segundo plano.
+- Env no Coolify: `KOKORO_URL=http://kokoro-tts:8880` (criada nas duas faces,
+  produção e preview — o Coolify limpa o `.env` a cada deploy).
+- Medição completa: [memory/reference_kokoro_para_o_echo_20260923.md].
 
 ### Precisão da leitura — o narrador soletrava (09/2026)
 
