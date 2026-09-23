@@ -52,10 +52,18 @@ PREFIXO_KOKORO = "kokoro:"
 # As vozes pt-BR do Edge — e só elas. As de Portugal (pt-PT-DuarteNeural,
 # pt-PT-RaquelNeural) ficam de fora de propósito: o sotaque europeu se ouve na
 # hora e não é o que o leitor daqui espera.
+# 🚨 A Thalita é MULTILÍNGUE (`...MultilingualNeural`): a Microsoft detecta o
+# idioma sozinha e troca no meio da leitura. Num livro em português ela
+# escorrega para o INGLÊS em título, sigla e item de lista — relatado pelo
+# dono ao ouvir, e o número acompanha: na mesma frase ela leva 6,92 s contra
+# 5,77 da Francisca e 6,44 do Antônio, e diz "manifestação" em 1,05 s contra
+# 0,90 e 0,80. As outras duas são travadas em pt-BR e não fazem isso.
+# Fica na lista porque a voz agrada, mas com o aviso NA TELA.
 VOZES_EDGE = [
     {"name": "pt-BR-FranciscaNeural", "label": "Francisca", "gender": "Feminina", "motor": "edge"},
     {"name": "pt-BR-AntonioNeural", "label": "Antônio", "gender": "Masculina", "motor": "edge"},
-    {"name": "pt-BR-ThalitaMultilingualNeural", "label": "Thalita", "gender": "Feminina", "motor": "edge"},
+    {"name": "pt-BR-ThalitaMultilingualNeural", "label": "Thalita", "gender": "Feminina", "motor": "edge",
+     "aviso": "às vezes escorrega para o inglês"},
 ]
 
 # Kokoro tem três em português: pf_dora, pm_alex e pm_santa. A Dora é a que já
@@ -311,6 +319,6 @@ async def list_voices(language: str = "pt-BR") -> list[dict]:
     """
     return [
         dict(v, locale="pt-BR",
-             aviso="gera mais devagar" if v.get("motor") == "kokoro" else "")
+             aviso=v.get("aviso") or ("gera mais devagar" if v.get("motor") == "kokoro" else ""))
         for v in VOZES_PT_BR
     ]

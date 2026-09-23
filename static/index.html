@@ -186,7 +186,28 @@
         .text-view p { margin-bottom: 16px; line-height: 1.95; font-size: 17px; color: var(--charcoal); }
         .text-view .word { cursor: pointer; border-radius: 3px; padding: 1px 1px; transition: background 0.08s; }
         .text-view .word:hover { background: var(--cloud); }
-        .text-view .word.active-sentence { background: var(--highlight); padding: 1px 2px; border-radius: 3px; }
+
+        /* 🚨 UMA FAIXA CONTÍNUA, como no PDF — não uma caixinha por palavra.
+           Cada palavra é um <span> e os espaços entre elas são texto solto,
+           FORA de qualquer span: pintar só os spans deixava a frase cheia de
+           buracos, com um retângulo arredondado por palavra.
+           O recuo horizontal fecha a folga e a margem negativa devolve a
+           posição, então as caixas vizinhas se encostam e viram uma faixa só.
+           `box-decoration-break: clone` mantém o desenho certo quando a frase
+           quebra de linha. Os cantos arredondados ficam só nas PONTAS. */
+        .text-view .word.active-sentence {
+            background: rgba(165, 175, 250, 0.42);   /* o mesmo lavanda do PDF */
+            color: var(--ink);
+            padding: 3px 0.22em;
+            margin: 0 -0.22em;
+            border-radius: 0;
+            box-decoration-break: clone;
+            -webkit-box-decoration-break: clone;
+        }
+        .text-view .word.active-sentence.frase-inicio { border-top-left-radius: 5px; border-bottom-left-radius: 5px; }
+        .text-view .word.active-sentence.frase-fim    { border-top-right-radius: 5px; border-bottom-right-radius: 5px; }
+        [data-theme="dark"] .text-view .word.active-sentence { background: rgba(120, 130, 230, 0.40); }
+
         .text-view .word.spoken { color: var(--ink); }
 
         /* === PLAYER ===============================================
@@ -1937,7 +1958,12 @@ function updateHighlight() {
 
     // Highlight: frase inteira = active-sentence, ja faladas = spoken
     words.forEach((w, i) => {
-        w.classList.toggle('active-sentence', i >= sentStart && i <= sentEnd && sentStart >= 0);
+        const naFrase = i >= sentStart && i <= sentEnd && sentStart >= 0;
+        w.classList.toggle('active-sentence', naFrase);
+        // As pontas levam o canto redondo; o meio fica reto para as caixas
+        // se encostarem e formarem uma faixa só.
+        w.classList.toggle('frase-inicio', naFrase && i === sentStart);
+        w.classList.toggle('frase-fim', naFrase && i === sentEnd);
         w.classList.toggle('spoken', i < sentStart && sentStart >= 0);
     });
 
