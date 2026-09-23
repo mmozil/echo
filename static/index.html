@@ -196,7 +196,15 @@
            `box-decoration-break: clone` mantém o desenho certo quando a frase
            quebra de linha. Os cantos arredondados ficam só nas PONTAS. */
         .text-view .word.active-sentence {
-            background: rgba(165, 175, 250, 0.42);   /* o mesmo lavanda do PDF */
+            /* 🚨 COR CHAPADA, não translúcida. As caixas das palavras vizinhas
+               se SOBREPÕEM (é a margem negativa que fecha o vão do espaço), e
+               com fundo translúcido o alfa SOMA na sobreposição: aparecia uma
+               listra mais escura em cada emenda — exatamente as "separações"
+               que sobraram depois da primeira correção.
+               Este é o mesmo lavanda de antes, já misturado com o fundo da
+               página: rgba(165,175,250,.42) sobre #FAFBFC dá #D6DBFB. Opaco,
+               a sobreposição some. */
+            background: #D6DBFB;
             color: var(--ink);
             padding: 3px 0.22em;
             margin: 0 -0.22em;
@@ -206,7 +214,8 @@
         }
         .text-view .word.active-sentence.frase-inicio { border-top-left-radius: 5px; border-bottom-left-radius: 5px; }
         .text-view .word.active-sentence.frase-fim    { border-top-right-radius: 5px; border-bottom-right-radius: 5px; }
-        [data-theme="dark"] .text-view .word.active-sentence { background: rgba(120, 130, 230, 0.40); }
+        /* rgba(120,130,230,.40) sobre #0F172A = #394275 */
+        [data-theme="dark"] .text-view .word.active-sentence { background: #394275; color: #F1F3FF; }
 
         .text-view .word.spoken { color: var(--ink); }
 
