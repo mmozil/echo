@@ -126,6 +126,11 @@
         .toc-item:hover { background: var(--cloud); }
         .toc-item.active { background: var(--accent-light); font-weight: 500; }
         .toc-item.l2 { padding-left: 24px; font-size: 11px; color: var(--slate); }
+        /* Três degraus. Além do terceiro, 260px de coluna não sustentam recuo. */
+        .toc-item.l3 { padding-left: 38px; font-size: 10.5px; color: var(--mist); }
+        /* O item que está sendo lido AGORA: o traço à esquerda é o que se acha
+           de relance numa lista de 40 linhas — o fundo sozinho não. */
+        .toc-item.active { background: var(--accent-light); font-weight: 500; color: var(--ink); box-shadow: inset 2px 0 0 var(--ink); }
         .toc-page { font-size: 10px; color: var(--mist); margin-left: auto; flex-shrink: 0; }
         .thumb-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; padding: 4px; }
         .thumb-item { cursor: pointer; border-radius: 4px; overflow: hidden; border: 2px solid transparent; transition: border-color 0.15s; position: relative; }
@@ -474,6 +479,13 @@
             .settings-panel { width: 100%; }
             .reader-header { padding: 8px 10px; gap: 6px; }
             .reader-title { font-size: 13px; max-width: 140px; overflow: hidden; text-overflow: ellipsis; }
+
+            /* O sumário some por cima da leitura, em vez de roubar 260 dos
+               390px da tela. O botão que já existe no cabeçalho é quem o
+               chama, e o véu escuro diz que ele está por cima. */
+            .reader-content { position: relative; }
+            .reader-sidebar { position: absolute; inset: 0 auto 0 0; z-index: 5;
+                              width: min(82vw, 300px); box-shadow: 0 0 0 100vmax rgba(0,0,0,.35); }
 
             /* Player mobile: a pílula ocupa a largura útil (a tela já é
                estreita, então aqui ela não fica esticada), e os controles
@@ -890,7 +902,16 @@ window.alternarPlayer = alternarPlayer;
         return p.then(function (r) {
             if (r.status === 401 && !String(url).includes('/api/auth/')) {
                 localStorage.removeItem('echo_token');
-                window.location.href = '/login';
+                // 🚨 NÃO navegar a partir de chamada de fundo com a tela escondida.
+                // Prefetch e gravação de progresso correm sozinhos durante a
+                // leitura; um 401 num deles descarregava a página inteira — o
+                // <audio> morria junto e a leitura parava sem explicação, com o
+                // telefone no bolso. Com a tela à vista, o redirecionamento é
+                // útil e continua igual; escondido, guarda-se o aviso.
+                const deFundo = (opts && opts.headers && opts.headers['X-Echo-Fundo'])
+                    || document.visibilityState === 'hidden';
+                if (deFundo) window.__sessaoVencida = true;
+                else window.location.href = '/login';
             }
             return r;
         });
@@ -1020,15 +1041,20 @@ function renderDocuments(docs) {
     if (!docs.length) { c.innerHTML = ''; return; }
     c.innerHTML = `<div class="section-title">Sua biblioteca</div><div class="book-grid">${docs.map(doc => {
         const pct = doc.total_chunks>0?((doc.current_chunk||0)/doc.total_chunks*100):0;
-        return `<div class="book-card" onclick="openDocument('${doc.id}')">
-            <button class="book-delete" onclick="event.stopPropagation();deleteDoc('${doc.id}','${doc.title.replace(/'/g,"\\'")}')"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
+        // 🚨 doc.title vem do campo /Title do PDF — texto escolhido por quem
+        // gerou o arquivo. Sem escape, basta ABRIR a biblioteca para um PDF
+        // hostil rodar script com a origem do app e ler o token do
+        // localStorage. O id vai pelo mesmo caminho e é validado à parte.
+        const id = /^[a-f0-9-]{6,40}$/i.test(String(doc.id)) ? doc.id : '';
+        return `<div class="book-card" onclick="openDocument('${id}')">
+            <button class="book-delete" onclick="event.stopPropagation();deleteDoc('${id}',this.closest('.book-card').querySelector('.book-title').textContent)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
             <div class="book-cover-wrap">
-                <img src="/api/covers/${doc.id}.png" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
-                <div class="book-cover-fallback" style="display:none;background:${doc.cover_color}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg></div>
+                <img src="/api/covers/${id}.png" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+                <div class="book-cover-fallback" style="display:none;background:${esc(doc.cover_color)}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg></div>
                 ${pct>0?`<div class="book-progress-bar"><div class="book-progress-fill" style="width:${pct}%"></div></div>`:''}
             </div>
-            <div class="book-title">${doc.title}</div>
-            <div class="book-meta">${doc.total_pages} pag.</div>
+            <div class="book-title">${esc(doc.title)}</div>
+            <div class="book-meta">${Number(doc.total_pages)||0} pag.</div>
         </div>`;
     }).join('')}</div>`;
 }
@@ -1058,6 +1084,7 @@ async function openDocument(docId) {
         const d = await r.json();
         currentDoc = d.document; currentChunks = d.chunks; currentChunkIndex = d.progress?.current_chunk||0;
         prefetchCache = {}; renderedPages = {}; pageWordPositions = {}; chunkTextCache = {}; chunkDurations = {};
+        _ultimaFrase = null; _ultimaPaginaRolada = -1; _tocAtivo = -1;
 
         document.getElementById('readerTitle').textContent = currentDoc.title;
         document.getElementById('totalPages').textContent = currentDoc.total_pages;
@@ -1071,6 +1098,9 @@ async function openDocument(docId) {
         document.getElementById('reader').classList.add('active');
         document.getElementById('libraryView').classList.add('hidden');
         document.querySelector('.header').style.display = 'none';
+        // No celular o sumário nasce fechado: aberto, ele cobre a leitura.
+        document.getElementById('readerSidebar')
+            ?.classList.toggle('hidden', window.innerWidth <= 640);
 
         updateLoading('Renderizando...', `${currentDoc.total_pages} páginas`);
 
@@ -1079,17 +1109,10 @@ async function openDocument(docId) {
         await loadPdfDocument();
         await loadChunkText(currentChunkIndex);
 
-        // Scroll handlers
-        const scrollHandler = () => { if(programmaticScroll) return; userScrolling = true; clearTimeout(userScrollTimer); userScrollTimer = setTimeout(() => { userScrolling = false; }, 5000); };
-        const pdfView = document.getElementById('pdfView');
-        pdfView.addEventListener('scroll', scrollHandler, {passive:true});
-        pdfView.addEventListener('wheel', scrollHandler, {passive:true});
-        pdfView.addEventListener('touchmove', scrollHandler, {passive:true});
-        document.getElementById('textView').addEventListener('scroll', scrollHandler, {passive:true});
-        document.getElementById('textView').addEventListener('wheel', scrollHandler, {passive:true});
-
-        // Track current page from scroll
-        pdfView.addEventListener('scroll', updateCurrentPageFromScroll, {passive:true});
+        // 🚨 Os ouvintes de rolagem são ligados UMA vez, no boot. Ligá-los aqui
+        // acumulava um jogo novo a cada livro aberto: abrir cinco livros numa
+        // sessão deixava cinco cópias do mesmo handler no mesmo elemento.
+        ligarRolagemDoLeitor();
 
         updateChapterDisplay();
         prefetchChunks(currentChunkIndex, 5);
@@ -1306,6 +1329,27 @@ function closeReaderInternal() {
     loadDocuments();
 }
 
+// Idempotente de propósito: pode ser chamada a cada abertura de documento sem
+// empilhar ouvinte nenhum.
+let _rolagemLigada = false;
+function ligarRolagemDoLeitor() {
+    if (_rolagemLigada) return;
+    _rolagemLigada = true;
+    const marcarMao = () => {
+        if (programmaticScroll) return;
+        userScrolling = true;
+        clearTimeout(userScrollTimer);
+        userScrollTimer = setTimeout(() => { userScrolling = false; }, 5000);
+    };
+    const pdfView = document.getElementById('pdfView');
+    const textView = document.getElementById('textView');
+    if (pdfView) {
+        ['scroll','wheel','touchmove'].forEach(ev => pdfView.addEventListener(ev, marcarMao, {passive:true}));
+        pdfView.addEventListener('scroll', updateCurrentPageFromScroll, {passive:true});
+    }
+    if (textView) ['scroll','wheel'].forEach(ev => textView.addEventListener(ev, marcarMao, {passive:true}));
+}
+
 function scrollPdfToPage(page) {
     const el = document.getElementById(`pdf-page-${page}`);
     if (el) { programmaticScroll=true; el.scrollIntoView({behavior:'smooth',block:'center'}); setTimeout(()=>{programmaticScroll=false;},1000); }
@@ -1343,8 +1387,28 @@ function showScrollToListening() {
 // === AUDIO ===
 async function togglePlay() { if(isPlaying) pauseAudio(); else await playCurrentChunk(); }
 
+// =========================================================================
+// A VIRADA DE TRECHO  (ler antes de mexer em playCurrentChunk)
+//
+// Aqui morava o defeito de "saí da tela e ele parou de falar". A função
+// esperava um requestAnimationFrame antes de atribuir o audio.src do trecho
+// seguinte — e a especificação manda o navegador NÃO servir quadro de
+// animação para documento escondido. Com a aba em segundo plano ou a tela do
+// celular apagada, a promessa ficava pendurada para sempre: o trecho que já
+// estava no buffer terminava (o <audio> toca sem JS), e o próximo nunca
+// começava. Ao voltar para a aba, o quadro vinha e a leitura retomava — o que
+// fazia parecer "só funciona com a tela aberta".
+//
+// 🚨 A ORDEM AGORA É: som primeiro, enfeite depois. Nada que exista só para
+// desenhar (texto na tela, mapa de palavras, posições no PDF) pode ficar
+// entre ter a URL do áudio e mandar tocar.
+// =========================================================================
+
+let _geracaoDeLeitura = 0;   // token: só a chamada mais recente pode concluir
+
 async function playCurrentChunk(fracaoInicial = 0) {
     if (!currentDoc) return;
+    const geracao = ++_geracaoDeLeitura;
     stopHighlightLoop();
     lastPdfHighlightIdx = -1; // Reset highlight tracking
     // Limpar SVG highlights de TODAS as páginas (transição entre chunks/páginas)
@@ -1354,18 +1418,11 @@ async function playCurrentChunk(fracaoInicial = 0) {
         let data;
         if (prefetchCache[currentChunkIndex]) { data = prefetchCache[currentChunkIndex]; delete prefetchCache[currentChunkIndex]; }
         else { const r = await fetch(`/api/documents/${currentDoc.id}/chunks/${currentChunkIndex}/audio?voice=${encodeURIComponent(selectedVoice)}`,{method:'POST'}); data = await r.json(); if(!data.audio_url) throw new Error(data.detail||'Erro'); }
+        if (geracao !== _geracaoDeLeitura) return;   // outra troca passou na frente
 
-        wordBoundaries = data.boundaries || [];
-        _sentenceRanges = [];
-        if (data.text) renderTextWithWords(data.text);
-        // Esperar DOM atualizar antes de construir boundary map
-        await new Promise(r => requestAnimationFrame(r));
-        buildBoundaryMap();
-
-        // Pre-load word positions ANTES do play (para highlight funcionar imediatamente)
         const chunk = currentChunks[currentChunkIndex];
-        if (chunk) await loadPageWords(chunk.page);
 
+        // --- 1) SOM ---------------------------------------------------------
         audio.src = data.audio_url;
         audio.playbackRate = currentSpeed;
         if (fracaoInicial > 0) {
@@ -1376,17 +1433,29 @@ async function playCurrentChunk(fracaoInicial = 0) {
                 audio.addEventListener('loadedmetadata', r, { once: true });
                 setTimeout(r, 3000);
             });
+            if (geracao !== _geracaoDeLeitura) return;
             if (audio.duration) audio.currentTime = fracaoInicial * audio.duration;
         }
         await audio.play();
+        if (geracao !== _geracaoDeLeitura) return;
         isPlaying = true;
-        showPlayLoading(false);
         updatePlayButton();
-        startHighlightLoop();
         updateChapterDisplay();
+        anunciarNaTelaDeBloqueio();
+        pedirWakeLock();
         resetPlayerIdle();
 
-        // Prefetch next chunks (5 ahead) e word positions das paginas seguintes
+        // --- 2) ENFEITE -----------------------------------------------------
+        // buildBoundaryMap só lê textContent dos spans, e eles existem de forma
+        // síncrona logo após innerHTML: não há nada a esperar aqui.
+        wordBoundaries = data.boundaries || [];
+        _sentenceRanges = [];
+        if (data.text) renderTextWithWords(data.text);
+        buildBoundaryMap();
+        startHighlightLoop();
+
+        // Sem await: posição de palavra é insumo de destaque, não de som.
+        // updatePdfHighlight já sabe carregar sob demanda quando falta.
         prefetchAhead(currentChunkIndex);
         if (chunk) {
             for (let p = chunk.page; p <= Math.min(chunk.page + 3, currentDoc.total_pages); p++) {
@@ -1394,8 +1463,21 @@ async function playCurrentChunk(fracaoInicial = 0) {
             }
         }
 
-        fetch(`/api/documents/${currentDoc.id}/progress?current_chunk=${currentChunkIndex}`,{method:'PUT'});
-    } catch(e) { showPlayLoading(false); showToast(e.message); }
+        salvarProgresso();
+    } catch(e) {
+        if (geracao === _geracaoDeLeitura) { isPlaying = false; updatePlayButton(); showToast(e.message); }
+    } finally {
+        // 🚨 finally, não a última linha do try: uma falha no meio deixava a
+        // bolinha girando para sempre e o botão mentindo sobre o estado.
+        if (geracao === _geracaoDeLeitura) showPlayLoading(false);
+    }
+}
+
+function salvarProgresso() {
+    if (!currentDoc) return;
+    const ms = Math.round((audio.currentTime || 0) * 1000);
+    fetch(`/api/documents/${currentDoc.id}/progress?current_chunk=${currentChunkIndex}&position_ms=${ms}`,
+          { method: 'PUT', headers: { 'X-Echo-Fundo': '1' } }).catch(() => {});
 }
 
 // Prefetch 5 chunks ahead
@@ -1407,8 +1489,107 @@ function prefetchAhead(fromIdx) {
     }
 }
 
-function pauseAudio() { audio.pause(); isPlaying=false; updatePlayButton(); stopHighlightLoop(); resetPlayerIdle(); }
-function stopAudio() { audio.pause(); audio.src=''; isPlaying=false; updatePlayButton(); stopHighlightLoop(); wordBoundaries=[]; prefetchCache={}; resetPlayerIdle(); }
+function pauseAudio() { audio.pause(); isPlaying=false; updatePlayButton(); stopHighlightLoop(); soltarWakeLock(); salvarProgresso(); resetPlayerIdle(); }
+function stopAudio() { _geracaoDeLeitura++; audio.pause(); audio.src=''; isPlaying=false; updatePlayButton(); stopHighlightLoop(); soltarWakeLock(); wordBoundaries=[]; prefetchCache={}; resetPlayerIdle(); }
+
+// =========================================================================
+// TOCAR COM A TELA APAGADA
+//
+// Três peças, e as três precisam existir juntas:
+//
+// 1. mediaSession — é o que promove a aba a REPRODUTOR aos olhos do sistema.
+//    Sem ela não há card na tela de bloqueio, não há play/pause no fone nem
+//    no carro, e o sistema trata a aba como página comum, que ele pode
+//    suspender com mais vontade.
+// 2. Os eventos do <audio> — quando o sistema pausa a mídia (ligação, outro
+//    app tomando o áudio, decodificador suspenso), ninguém escutava e a tela
+//    seguia dizendo que estava tocando.
+// 3. visibilitychange — ao voltar, reconciliar o que aconteceu longe da vista.
+// =========================================================================
+
+function anunciarNaTelaDeBloqueio() {
+    if (!('mediaSession' in navigator) || !currentDoc) return;
+    const chunk = currentChunks[currentChunkIndex];
+    const capitulo = document.getElementById('ppChapterText')?.textContent
+        || (chunk ? `Página ${chunk.page}` : '');
+    try {
+        navigator.mediaSession.metadata = new MediaMetadata({
+            title: capitulo,
+            artist: currentDoc.title || 'Echo',
+            album: 'Echo',
+            artwork: [{ src: `/api/covers/${currentDoc.id}.png`, sizes: '400x400', type: 'image/png' }],
+        });
+        navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
+    } catch {}
+}
+
+(function ligarControlesDoSistema() {
+    if (!('mediaSession' in navigator)) return;
+    const liga = (acao, fn) => { try { navigator.mediaSession.setActionHandler(acao, fn); } catch {} };
+    liga('play', () => { if (!isPlaying) playCurrentChunk(); });
+    liga('pause', () => pauseAudio());
+    liga('seekbackward', (d) => skipBack(d?.seekOffset));
+    liga('seekforward', (d) => skipForward(d?.seekOffset));
+    liga('previoustrack', () => prevChunk());
+    liga('nexttrack', () => nextChunk());
+})();
+
+// --- Wake Lock: paliativo, não a correção ---------------------------------
+// Segurar a tela acesa evita cair no estado escondido, mas quem apaga a tela
+// de propósito continua tendo de funcionar — por isso o conserto de verdade é
+// a ordem da virada de trecho, não este pedido.
+let _wakeLock = null;
+async function pedirWakeLock() {
+    if (!('wakeLock' in navigator) || _wakeLock) return;
+    try {
+        _wakeLock = await navigator.wakeLock.request('screen');
+        _wakeLock.addEventListener('release', () => { _wakeLock = null; });
+    } catch {}
+}
+function soltarWakeLock() { try { _wakeLock?.release(); } catch {} _wakeLock = null; }
+
+// --- O <audio> agora tem quem o escute ------------------------------------
+audio.addEventListener('pause', () => {
+    // Pausa que não veio do botão (ligação, outro app, sistema): a tela tem de
+    // contar a verdade, senão o próximo toque só "desfaz" a mentira.
+    if (isPlaying && !audio.ended) { isPlaying = false; updatePlayButton(); stopHighlightLoop(); }
+    if ('mediaSession' in navigator) { try { navigator.mediaSession.playbackState = 'paused'; } catch {} }
+});
+
+audio.addEventListener('play', () => {
+    if ('mediaSession' in navigator) { try { navigator.mediaSession.playbackState = 'playing'; } catch {} }
+});
+
+audio.addEventListener('error', () => {
+    if (!audio.src) return;
+    isPlaying = false; updatePlayButton(); stopHighlightLoop(); showPlayLoading(false);
+    showToast('Falhou o áudio deste trecho. Toque play para tentar de novo.');
+});
+
+// Ao VOLTAR para a tela: reconciliar. Se a intenção era ouvir e o áudio está
+// parado no fim do trecho, a virada ficou para trás — retoma-se aqui.
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible') return;
+    // A sessão venceu enquanto a tela estava fora: o aviso ficou guardado para
+    // não descarregar a página no meio da escuta. Agora dá para tratar.
+    if (window.__sessaoVencida) { window.location.href = '/login'; return; }
+    if (_wakeLock === null && isPlaying) pedirWakeLock();   // o lock morre ao esconder
+    if (isPlaying && audio.paused && audio.src) {
+        if (audio.ended) { /* o handler de 'ended' cuida do avanço */ }
+        else audio.play().catch(() => {});
+    }
+    if (isPlaying && !highlightInterval && wordBoundaries.length) startHighlightLoop();
+});
+
+// Posição dentro do trecho, gravada de tempos em tempos. Antes só se gravava
+// o índice do trecho AO COMEÇAR: quem ouvia 50s e fechava voltava ao início
+// daquele trecho e reouvia tudo.
+let _ultimoSalvo = 0;
+audio.addEventListener('timeupdate', () => {
+    const agora = Date.now();
+    if (isPlaying && agora - _ultimoSalvo > 10000) { _ultimoSalvo = agora; salvarProgresso(); }
+});
+window.addEventListener('pagehide', () => salvarProgresso());
 
 const PP_ICONE_PLAY = '<svg viewBox="0 0 24 24" fill="currentColor"><polygon points="8 5 20 12 8 19 8 5"/></svg>';
 const PP_ICONE_PAUSE = '<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14"/><rect x="14" y="5" width="4" height="14"/></svg>';
@@ -1440,18 +1621,32 @@ function buildBoundaryMap() {
     const words = document.querySelectorAll('#textView .word');
     let di = 0;
     for (let bi=0; bi<wordBoundaries.length; bi++) {
-        const bt = wordBoundaries[bi].text.toLowerCase().replace(/[.,;:!?"'()\[\]]/g,'');
+        const bt = normalizarPalavra(wordBoundaries[bi].text);
         let found = false;
         for (let d=di; d<words.length && d<di+15; d++) {
-            const wt = words[d].textContent.toLowerCase().replace(/[.,;:!?"'()\[\]]/g,'');
-            if (wt===bt || wt.startsWith(bt) || bt.startsWith(wt)) { boundaryToWordMap.push(d); di=d+1; found=true; break; }
+            const wt = normalizarPalavra(words[d].textContent);
+            // 🚨 Sem esta guarda, um token de pontuação pura ('—', '. . .' de
+            // sumário) vira string vazia, e ''.startsWith('') é SEMPRE verdade:
+            // o traço casava com a próxima palavra que viesse, consumia o
+            // índice, e o realce saltava para a pontuação.
+            if (!wt || !bt) continue;
+            if (wt===bt || (bt.length>=3 && (wt.startsWith(bt) || bt.startsWith(wt)))) { boundaryToWordMap.push(d); di=d+1; found=true; break; }
         }
         if (!found) boundaryToWordMap.push(-1);
     }
 }
 
+// Livro brasileiro usa ASPA CURVA e travessão. A lista antiga só tirava aspa
+// reta, então `“dons` não casava com `dons` por nenhum dos três testes — e o
+// realce morria na primeira fala entre aspas, que num devocional é toda hora.
+function normalizarPalavra(s) {
+    return String(s || '').toLowerCase().replace(/[.,;:!?"'()\[\]—–‒―“”„‟‘’‚‛«»…·]/g, '').trim();
+}
+
 // Cache de limites de frase (recalculado quando o texto muda)
 let _sentenceRanges = [];
+let _ultimaFrase = null;        // última frase realçada com par válido
+let _ultimaPaginaRolada = -1;   // evita rolar o PDF 20 vezes por segundo
 function buildSentenceRanges(words) {
     _sentenceRanges = [];
     let start = 0;
@@ -1483,6 +1678,12 @@ function updateHighlight() {
     for (const [s, e] of _sentenceRanges) {
         if (awi >= s && awi <= e) { sentStart = s; sentEnd = e; break; }
     }
+    // 🚨 Palavra sem par (aspa curva, número hifenizado, pausa entre
+    // boundaries) devolvia -1, e o realce da tela inteira era apagado por
+    // 50-300ms — o "piscar". Quando não há par, MANTÉM-SE a última frase
+    // válida: a voz não voltou atrás, o destaque também não deve voltar.
+    if (sentStart < 0 && _ultimaFrase) { sentStart = _ultimaFrase[0]; sentEnd = _ultimaFrase[1]; }
+    else if (sentStart >= 0) _ultimaFrase = [sentStart, sentEnd];
 
     // Highlight: frase inteira = active-sentence, ja faladas = spoken
     words.forEach((w, i) => {
@@ -1498,9 +1699,13 @@ function updateHighlight() {
         if (wt < ts + 60 || wt > ts + th - 80) tv.scrollTo({ top: wt - th / 3, behavior: 'smooth' });
     }
 
-    // PDF view: scroll to page
+    // PDF view: rolar quando a PÁGINA muda, não a cada tique.
+    // 🚨 Isto rodava 20 vezes por segundo, com scrollIntoView suave: a cada
+    // tentativa de rolar com a mão, a página era puxada de volta em 50ms, e
+    // como programmaticScroll estava ligado o gesto nem era reconhecido.
     if (currentView==='pdf' && currentChunks[currentChunkIndex] && !userScrolling) {
-        scrollPdfToPage(currentChunks[currentChunkIndex].page);
+        const pg = currentChunks[currentChunkIndex].page;
+        if (pg !== _ultimaPaginaRolada) { _ultimaPaginaRolada = pg; scrollPdfToPage(pg); }
     }
 
     // PDF highlight
@@ -1514,19 +1719,30 @@ function renderTextWithWords(text) {
     for (const p of paras) {
         html += '<p>';
         const tks = p.split(/(\s+)/);
-        for (const t of tks) { if(t.trim()) { html+=`<span class="word" data-idx="${wi}" onclick="seekToWord(${wi})">${t}</span>`; wi++; } else html+=t; }
+        // esc(): o texto vem do PDF e vai para innerHTML. Um "<" no miolo do
+        // livro fechava o span e comia o resto do parágrafo, e um PDF hostil
+        // faria pior.
+        for (const t of tks) { if(t.trim()) { html+=`<span class="word" data-idx="${wi}" onclick="seekToWord(${wi})">${esc(t)}</span>`; wi++; } else html+=t; }
         html += '</p>';
     }
     tv.innerHTML = html;
     // Buildar cache de frases imediatamente com os spans criados
     _sentenceRanges = [];
+    _ultimaFrase = null;   // o trecho é outro: não há frase anterior a preservar
     buildSentenceRanges(tv.querySelectorAll('.word'));
 }
 
 async function loadChunkText(index) {
+    // 🚨 Quem chama isto é updateUI, e updateUI corre logo ANTES de
+    // playCurrentChunk na virada de trecho. Se a resposta chegar depois que o
+    // play já renderizou o texto e montou o mapa de palavras, ela reescreve o
+    // innerHTML por baixo do mapa: os índices guardados passam a apontar para
+    // spans que não existem mais, e o realce some. O token diz quem manda.
+    const geracao = _geracaoDeLeitura;
     try {
         const r = await fetch(`/api/documents/${currentDoc.id}/chunks/${index}/text`);
         const d = await r.json();
+        if (geracao !== _geracaoDeLeitura) return;   // o play assumiu o texto
         renderTextWithWords(d.text);
     } catch {}
 }
@@ -1771,8 +1987,10 @@ window.abrirFolha = abrirFolha;
 window.fecharFolha = fecharFolha;
 window.escolherNaFolha = escolherNaFolha;
 
-function skipBack() { if(audio.src) audio.currentTime = Math.max(0, audio.currentTime - 10); }
-function skipForward() { if(audio.src) audio.currentTime = Math.min(audio.duration || 0, audio.currentTime + 10); }
+// O salto aceita o passo que o SISTEMA pedir (o card da tela de bloqueio
+// manda o seu em seekOffset); sem pedido, 10s, como os botões da tela.
+function skipBack(passo) { if(audio.src) audio.currentTime = Math.max(0, audio.currentTime - (passo || 10)); }
+function skipForward(passo) { if(audio.src) audio.currentTime = Math.min(audio.duration || 0, audio.currentTime + (passo || 10)); }
 
 let voiceList = [], voiceIdx = 0, selectedVoice = 'pt-BR-AntonioNeural';
 
@@ -1825,6 +2043,16 @@ function aplicaRotuloDaVoz() {
     if (vn) vn.textContent = rotuloDaVoz(selectedVoice);
 }
 
+// Qual entrada do sumário cobre esta página: a ÚLTIMA que começa antes dela.
+// Uma função só para os dois usos — o rótulo do player e o item aceso na
+// lateral têm de concordar, senão um diz "Capítulo 3" e o outro acende o 2.
+function indiceNoSumario(page) {
+    for (let i = tocData.length - 1; i >= 0; i--) {
+        if (tocData[i].page <= page) return i;
+    }
+    return -1;
+}
+
 function updateChapterDisplay() {
     const el = document.getElementById('ppChapterText');
     if (!el || !currentChunks.length) return;
@@ -1832,13 +2060,10 @@ function updateChapterDisplay() {
     if (!chunk) return;
     const page = chunk.page;
     // Estilo Speechify: só nome do capítulo (ou "pág X" se sem TOC)
-    let chapterName = null;
-    if (tocData.length) {
-        for (let i = tocData.length - 1; i >= 0; i--) {
-            if (tocData[i].page <= page) { chapterName = tocData[i].title; break; }
-        }
-    }
-    el.textContent = chapterName || `Página ${page}`;
+    const i = indiceNoSumario(page);
+    el.textContent = i >= 0 ? tocData[i].title : `Página ${page}`;
+    marcarTocAtivo(page);
+    anunciarNaTelaDeBloqueio();
 }
 
 async function nextChunk() { if(currentChunkIndex<currentChunks.length-1){currentChunkIndex++;updateUI();if(isPlaying) await playCurrentChunk();} }
@@ -1875,8 +2100,23 @@ function setSidebarTab(tab) {
 
 async function loadToc() {
     if (!currentDoc) return;
+    // Documento novo começa no Conteúdo. Sem isto, quem tinha visto as
+    // miniaturas do livro anterior abria o seguinte com a aba "Conteudo"
+    // marcada e as miniaturas desenhadas — marcação e conteúdo discordando.
+    sidebarTab = 'toc';
+    tocData = [];
+    _tocAtivo = -1;
     try { const r = await fetch(`/api/documents/${currentDoc.id}/toc`); const d = await r.json(); tocData = d.toc || []; } catch { tocData = []; }
-    renderSidebar();
+    setSidebarTab('toc');
+    updateChapterDisplay();   // o rótulo do player nasceu "Página 1" à espera disto
+}
+
+// Texto vindo do PDF nunca entra cru no innerHTML: o título de um marcador é
+// escolhido por quem gerou o arquivo, e um PDF hostil executaria script na
+// sessão de quem só abriu o livro.
+function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, c =>
+        ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
 function renderSidebar() {
@@ -1886,12 +2126,17 @@ function renderSidebar() {
             sc.innerHTML = '<div style="padding:20px;text-align:center;font-size:12px;color:var(--mist)">Sem indice disponivel</div>';
             return;
         }
+        // Três degraus, não dois: o nível 3 caía na mesma classe do 2 e a
+        // hierarquia achatava. Mais que três não cabe em 260px de coluna.
         sc.innerHTML = tocData.map((item, i) => `
-            <div class="toc-item ${item.level > 1 ? 'l2' : ''}" onclick="goToPage(${item.page})">
-                <span>${item.title}</span>
-                <span class="toc-page">${item.page}</span>
+            <div class="toc-item l${Math.min(Math.max(item.level || 1, 1), 3)}" data-idx="${i}" onclick="irParaItemDoSumario(${i})">
+                <span>${esc(item.title)}</span>
+                <span class="toc-page">${Number(item.page) || 1}</span>
             </div>
         `).join('');
+        _tocAtivo = -1;
+        const chunk = currentChunks[currentChunkIndex];
+        if (chunk) marcarTocAtivo(chunk.page);
     } else {
         // Thumbnails using PDF.js
         if (!currentDoc) return;
@@ -1904,6 +2149,63 @@ function renderSidebar() {
         // Render thumbnails lazily
         renderThumbnails();
     }
+}
+
+// =========================================================================
+// O SUMÁRIO ACOMPANHA A LEITURA
+//
+// A classe .toc-item.active estava desenhada no CSS desde sempre e nunca era
+// aplicada: regra morta. Num livro de sete horas a lista ficava congelada no
+// topo, e para saber onde estava a pessoa tinha de conferir o número da
+// página no player e procurar à mão.
+//
+// 🚨 A rolagem automática RECUA quando a mão está na lista. Rolar por baixo
+// de quem está procurando outro capítulo é pior do que não rolar.
+// =========================================================================
+
+let _tocAtivo = -1;
+let _sumarioNaMao = false, _sumarioNaMaoTimer = null;
+
+(function ligarRolagemDoSumario() {
+    const sc = document.getElementById('sidebarContent');
+    if (!sc) return;
+    const daMao = () => {
+        _sumarioNaMao = true;
+        clearTimeout(_sumarioNaMaoTimer);
+        _sumarioNaMaoTimer = setTimeout(() => { _sumarioNaMao = false; }, 5000);
+    };
+    ['wheel', 'touchmove', 'pointerdown'].forEach(ev => sc.addEventListener(ev, daMao, { passive: true }));
+})();
+
+function marcarTocAtivo(page) {
+    if (sidebarTab !== 'toc' || !tocData.length) return;
+    const idx = indiceNoSumario(page);
+    if (idx < 0 || idx === _tocAtivo) return;   // só mexe quando muda de verdade
+    _tocAtivo = idx;
+
+    const sc = document.getElementById('sidebarContent');
+    if (!sc) return;
+    sc.querySelector('.toc-item.active')?.classList.remove('active');
+    const item = sc.querySelector(`.toc-item[data-idx="${idx}"]`);
+    if (!item) return;
+    item.classList.add('active');
+
+    if (_sumarioNaMao) return;
+    // Só rola se o item saiu de vista: rolagem a cada capítulo, mesmo quando
+    // já estava visível, faz a lista tremer sem motivo.
+    const topo = item.offsetTop - sc.offsetTop;
+    if (topo < sc.scrollTop + 8 || topo + item.offsetHeight > sc.scrollTop + sc.clientHeight - 8) {
+        sc.scrollTo({ top: Math.max(0, topo - sc.clientHeight / 3), behavior: 'smooth' });
+    }
+}
+
+// Clicar no sumário é NAVEGAR. Antes obrigava a falar: quem pausava para
+// responder alguém e abria o índice só para se situar era surpreendido pela
+// voz voltando sozinha.
+async function irParaItemDoSumario(i) {
+    const item = tocData[i];
+    if (!item) return;
+    await goToPage(item.page);
 }
 
 async function renderThumbnails() {
@@ -1924,13 +2226,21 @@ async function renderThumbnails() {
 
 async function goToPage(page) {
     scrollPdfToPage(page);
-    // Find nearest chunk
-    let bestChunk = 0;
-    for (let i = 0; i < currentChunks.length; i++) {
-        if (currentChunks[i].page <= page) bestChunk = i;
+    // 🚨 O PRIMEIRO trecho da página, não o último. A busca antiga pegava o
+    // maior índice com page <= alvo: numa página com vários trechos isso cai
+    // no fim dela, e o título e a abertura do capítulo nunca são lidos.
+    let alvo = currentChunks.findIndex(c => c.page >= page);
+    if (alvo < 0) {
+        // Página sem texto extraível: recua para o último trecho antes dela.
+        alvo = 0;
+        for (let i = 0; i < currentChunks.length; i++) if (currentChunks[i].page <= page) alvo = i;
     }
-    if (bestChunk !== currentChunkIndex) { currentChunkIndex = bestChunk; updateUI(); }
-    await playCurrentChunk();
+    const mudou = alvo !== currentChunkIndex;
+    currentChunkIndex = alvo;
+    if (mudou) updateUI();
+    // Navegar não é mandar tocar: com o player pausado, continua pausado.
+    if (isPlaying) await playCurrentChunk();
+    else { updateChapterDisplay(); refreshPlayerTime(); }
 }
 
 // === SEARCH ===
@@ -2439,7 +2749,8 @@ async function handleTextLayerClick(pageNum, clickedSpan, textLayerDiv) {
         wordBoundaries = data.boundaries || [];
         _sentenceRanges = [];
         if (data.text) renderTextWithWords(data.text);
-        await new Promise(r => requestAnimationFrame(r));
+        // (sem esperar quadro de animação: buildBoundaryMap só lê textContent,
+        // e os spans existem de forma síncrona logo após o innerHTML)
         buildBoundaryMap();
 
         // 8) Match direto no TEXTO dos boundaries do TTS (sequence match)
@@ -2517,6 +2828,7 @@ window.deleteDoc = deleteDoc;
 window.toggleSidebar = toggleSidebar;
 window.setSidebarTab = setSidebarTab;
 window.goToPage = goToPage;
+window.irParaItemDoSumario = irParaItemDoSumario;
 window.setView = setView;
 window.togglePlay = togglePlay;
 window.seekAudio = seekAudio;
