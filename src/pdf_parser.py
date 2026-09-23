@@ -73,8 +73,61 @@ def _separar_numero_de_palavra(palavra: str) -> str:
 
 
 def desoletrar(linha: str) -> str:
-    """'T E X T O  B Í B L I C O' -> 'TEXTO BÍBLICO'. Idempotente."""
+    """'T E X T O  B Í B L I C O' -> 'TEXTO BÍBLICO'. Idempotente.
+
+    ⚠️ SÓ funciona quando o extrator deixou a folga dupla entre palavras. Ver
+    `_linhas_por_geometria`: esse sinal depende da versão do PyMuPDF, então
+    este caminho é a REDE, não o principal.
+    """
     return _SOLETRADO.sub(_juntar_soletrado, linha)
+
+
+# =========================================================================
+# 🚨 A GEOMETRIA É A FONTE, O ESPAÇO DUPLO É SÓ UMA PISTA
+#
+# A primeira correção deste defeito se apoiou na folga: um espaço separa
+# letra, dois separam palavra. Isso foi MEDIDO e era verdade — no PyMuPDF
+# 1.25.5. O container foi reconstruído, o PyMuPDF subiu para 1.28.2, e a
+# MESMA página do MESMO arquivo (md5 conferido) passou a sair assim:
+#
+#   1.25.5:  'T E X T O  B Í B L I C O'   <- dois espaços entre palavras
+#   1.28.2:  'T E X T O B Í B L I C O'    <- espaço simples em tudo
+#
+# Com a pista morta, a de-soletração colava tudo: 'TEXTOBÍBLICO'. Trocar um
+# defeito por outro. A posição dos glifos, essa, não muda com a versão: a
+# folga ENTRE PALAVRAS é visivelmente maior que a folga entre letras, e é ela
+# que decide. `_juntar_letras_soltas` já fazia essa conta para o destaque —
+# agora o texto lido nasce da mesma conta, e os dois lados não podem divergir.
+# =========================================================================
+
+
+def _assinatura(texto: str) -> str:
+    """Só os caracteres, sem espaço: o que não muda entre as duas leituras."""
+    return re.sub(r"\s+", "", texto)
+
+
+def _linhas_por_geometria(page) -> dict[str, str]:
+    """Assinatura da linha -> texto remontado pela posição dos glifos."""
+    try:
+        palavras = _juntar_letras_soltas(page.get_text("words"))
+    except Exception:
+        return {}
+
+    por_linha: dict = {}
+    for w in palavras:
+        por_linha.setdefault((w[5], w[6]), []).append(w)
+
+    mapa: dict[str, str] = {}
+    for grupo in por_linha.values():
+        texto = " ".join(w[4] for w in grupo).strip()
+        if texto:
+            mapa.setdefault(_assinatura(texto), texto)
+    return mapa
+
+
+def _parece_soletrado(linha: str) -> bool:
+    """Linha com 3+ sinais de um caractere seguidos."""
+    return bool(_SOLETRADO.search(linha))
 
 
 # --- Cabeçalho e rodapé correntes ----------------------------------------
@@ -100,13 +153,18 @@ def _linhas_correntes(doc) -> set[str]:
     for i in range(total):
         pagina = doc[i]
         altura = pagina.rect.height or 1
+        geo = _linhas_por_geometria(pagina)
         try:
             blocos = pagina.get_text("dict")["blocks"]
         except Exception:
             continue
         for bloco in blocos:
             for linha in bloco.get("lines", []):
-                texto = desoletrar("".join(s["text"] for s in linha.get("spans", [])).strip())
+                cru = "".join(s["text"] for s in linha.get("spans", [])).strip()
+                # Mesmo critério do texto: geometria primeiro. Sem isto o
+                # cabeçalho entra aqui como 'UMDOMPARAQUÊ?' e nunca casa com a
+                # linha que o texto traz.
+                texto = geo.get(_assinatura(cru)) or desoletrar(cru)
                 if not texto or len(texto) > 70:
                     continue
                 meio = ((linha["bbox"][1] + linha["bbox"][3]) / 2) / altura
@@ -138,7 +196,7 @@ def extract_text_from_pdf(file_path: str) -> list[dict]:
     for page_num in range(len(doc)):
         page = doc[page_num]
         text = page.get_text("text")
-        text = _clean_text(text, correntes)
+        text = _clean_text(text, correntes, _linhas_por_geometria(page))
         if text.strip():
             pages.append({"page": page_num + 1, "text": text})
 
@@ -610,19 +668,26 @@ def _juntar_letras_soltas(raw: list) -> list:
 _SO_NUMERO = re.compile(r"^[\s\d]{1,6}$")
 
 
-def _clean_text(text: str, ignorar: set[str] = frozenset()) -> str:
+def _clean_text(text: str, ignorar: set[str] = frozenset(), geometria: dict | None = None) -> str:
     """Limpa texto extraído de PDF.
 
     🚨 A ORDEM É A CORREÇÃO. A de-soletração e o corte de número de página
     precisam rodar POR LINHA, antes de as linhas virarem parágrafo e antes de
     os espaços colapsarem — depois disso a informação já não existe mais.
+
+    `geometria` é o mapa de `_linhas_por_geometria`: quando ele traz a linha,
+    manda ele, porque a posição do glifo não depende da versão do extrator.
     """
+    geometria = geometria or {}
+
     # Remove hífens de quebra de linha
     text = re.sub(r"(\w)-\n(\w)", r"\1\2", text)
 
     linhas = []
     for linha in text.split("\n"):
-        linha = desoletrar(linha)
+        if _parece_soletrado(linha):
+            # Primeiro a geometria; a folga dupla é só a rede de segurança.
+            linha = geometria.get(_assinatura(linha)) or desoletrar(linha)
         nu = linha.strip()
         # Número de página solto. A regra antiga rodava DEPOIS da junção de
         # linhas, quando já não havia linha com só um número para casar —

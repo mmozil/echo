@@ -11,6 +11,8 @@ import pytest
 
 from src.pdf_parser import (
     _clean_text,
+    _linhas_por_geometria,
+    get_word_positions_on_page,
     _juntar_letras_soltas,
     _separar_numero_de_palavra,
     desoletrar,
@@ -206,3 +208,65 @@ def test_numero_colado_nao_estraga_sigla(palavra):
 def test_numero_colado_separa_numeral_de_palavra():
     assert _separar_numero_de_palavra("1CORÍNTIOS") == "1 CORÍNTIOS"
     assert _separar_numero_de_palavra("2TIMÓTEO") == "2 TIMÓTEO"
+
+# --- a geometria manda, não o espaço duplo -------------------------------
+
+def _pdf_letterspaced(tmp_path, palavras=("TEXTO", "BIBLICO", "PARA"), corpo=CORPO):
+    """Desenha cada LETRA na sua posição, como faz um editor gráfico.
+
+    🚨 Aqui NÃO existe o espaço duplo: as letras são desenhadas uma a uma e o
+    extrator vê só glifos. É o caso que quebrou quando o PyMuPDF passou de
+    1.25.5 para 1.28.2 — a mesma página, o mesmo arquivo, e a folga entre
+    palavras deixou de aparecer no texto simples.
+    """
+    doc = fitz.open()
+    pg = doc.new_page(width=600, height=400)
+    x, y = 40, 80
+    for palavra in palavras:
+        for ch in palavra:
+            pg.insert_text((x, y), ch, fontsize=14)
+            x += 14           # folga entre LETRAS
+        x += 26               # folga entre PALAVRAS (quase o dobro)
+    pg.insert_text((40, 200), corpo, fontsize=10)
+    caminho = str(tmp_path / "espacado.pdf")
+    doc.save(caminho)
+    doc.close()
+    return caminho
+
+
+def test_texto_soletrado_sai_certo_sem_o_espaco_duplo(tmp_path):
+    caminho = _pdf_letterspaced(tmp_path)
+    inteiro = " ".join(p["text"] for p in extract_text_from_pdf(caminho))
+    assert "TEXTO BIBLICO PARA" in inteiro, inteiro[:120]
+    # 🚨 o defeito que a correção anterior criava: colar tudo numa palavra só
+    assert "TEXTOBIBLICO" not in inteiro
+
+
+def test_geometria_separa_as_palavras(tmp_path):
+    """O mapa é POR LINHA do PDF, e a chave é a linha sem espaço nenhum.
+
+    Aqui cada palavra cai numa linha própria (é assim que o PyMuPDF agrupa o
+    que foi desenhado glifo a glifo), então o que se prova é que a folga larga
+    entre palavras NÃO foi confundida com folga entre letras.
+    """
+    caminho = _pdf_letterspaced(tmp_path)
+    doc = fitz.open(caminho)
+    try:
+        mapa = _linhas_por_geometria(doc[0])
+    finally:
+        doc.close()
+    for palavra in ("TEXTO", "BIBLICO", "PARA"):
+        assert mapa.get(palavra) == palavra, mapa
+    # 🚨 nenhuma chave colando duas palavras: seria o defeito que a correção
+    # baseada no espaço duplo passou a produzir quando o sinal sumiu
+    assert not any("TEXTOBIBLICO" in k for k in mapa), mapa
+
+
+def test_o_texto_e_as_posicoes_contam_a_mesma_historia(tmp_path):
+    """O clique casa as duas listas: divergir é o que torna o clique impreciso."""
+    caminho = _pdf_letterspaced(tmp_path)
+    do_texto = " ".join(p["text"] for p in extract_text_from_pdf(caminho)).split()
+    das_posicoes = [w["word"] for w in get_word_positions_on_page(caminho, 1)]
+    for palavra in ("TEXTO", "BIBLICO", "PARA"):
+        assert palavra in do_texto, "faltou no texto: %s" % palavra
+        assert palavra in das_posicoes, "faltou nas posicoes: %s" % palavra

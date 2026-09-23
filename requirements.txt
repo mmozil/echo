@@ -3,5 +3,9 @@ uvicorn[standard]==0.34.2
 python-multipart==0.0.20
 pydantic==2.11.3
 edge-tts==7.2.8
-PyMuPDF==1.25.5
+# 🚨 A versao importa e ja mordeu: entre 1.25.5 e 1.28.2 o extrator deixou de
+# emitir a folga DUPLA entre palavras em texto com letter-spacing. O codigo
+# hoje decide pela GEOMETRIA e nao depende mais disso, mas dev e producao tem
+# de rodar a MESMA versao — senao o teste passa aqui e o comportamento e outro la.
+PyMuPDF==1.28.2
 aiofiles==24.1.0
