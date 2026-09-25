@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState, useCallback, useMemo, memo } from 'react';
 import {
   View, Text, Pressable, ActivityIndicator, FlatList, ScrollView,
-  Dimensions, Alert, StyleSheet, Modal,
-} from 'react-native';
+  Dimensions, Alert, StyleSheet, } from 'react-native';
 import { Image } from 'expo-image';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, router } from 'expo-router';
@@ -12,8 +11,9 @@ import TrackPlayer, {
   usePlaybackState,
   useProgress,
 } from 'react-native-track-player';
-import { BlurView } from 'expo-blur';
 import Svg, { Path } from 'react-native-svg';
+import { Player } from '@/components/PlayerBar';
+import { Folha, LinhaFolha } from '@/components/Folha';
 import {
   ensurePlayerSetup, loadAndPlay, play as tpPlay, pause as tpPause,
   jumpBy, seekTo as tpSeek, setRate as tpSetRate, definirAvanco,
@@ -369,6 +369,22 @@ export default function Reader() {
   for (let i = 0; i < data.chunks.length; i++) total += durOf(i);
   const pct = total > 0 ? (elapsed / total) * 100 : 0;
 
+  // Arrastar a barra percorre o LIVRO, nao o trecho: `elapsed`/`total` ja' sao
+  // do livro inteiro, entao a fracao vira (trecho, deslocamento dentro dele).
+  const seekFraction = (f: number) => {
+    if (!data?.chunks?.length || total <= 0) return;
+    const alvo = total * Math.min(1, Math.max(0, f));
+    let acc = 0;
+    for (let i = 0; i < data.chunks.length; i++) {
+      const d = durOf(i);
+      if (acc + d > alvo || i === data.chunks.length - 1) {
+        playChunk(i, Math.max(0, alvo - acc));
+        return;
+      }
+      acc += d;
+    }
+  };
+
   return (
     <SafeAreaView style={styles.fill} edges={['top', 'left', 'right']}>
       <View style={styles.header}>
@@ -430,6 +446,7 @@ export default function Reader() {
       <View style={[styles.playerFloat, { paddingBottom: insets.bottom + 8 }]} pointerEvents="box-none">
         <Player
           coverId={doc.id}
+          titulo={doc.title}
           chapter={chapterName || `Página ${currentPage}`}
           page={chunk?.page || 1}
           totalPages={doc.total_pages}
@@ -441,6 +458,7 @@ export default function Reader() {
           onPlayPause={togglePlay}
           onSkip10={skip10}
           onChapterPress={() => toc?.length && setTocOpen(true)}
+          onSeekFraction={seekFraction}
           speed={speed}
           onSpeedChange={(s) => {
             setSpeed(s);
@@ -460,58 +478,25 @@ export default function Reader() {
         />
       </View>
 
-      {/* TOC Modal — lista de capítulos com página */}
-      <Modal
-        visible={tocOpen}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setTocOpen(false)}
-      >
-        <Pressable style={styles.sheetBackdrop} onPress={() => setTocOpen(false)}>
-          <Pressable style={styles.tocSheet} onPress={(e) => e.stopPropagation()}>
-            <View style={styles.tocHeader}>
-              <Text style={styles.tocHeaderTitle}>Capítulos</Text>
-              <Pressable onPress={() => setTocOpen(false)} hitSlop={10}>
-                <Text style={styles.tocClose}>×</Text>
-              </Pressable>
-            </View>
-            <ScrollView style={{ maxHeight: 480 }} showsVerticalScrollIndicator={false}>
-              {toc?.map((item, i) => {
-                const active = chapterName === item.title;
-                const indent = Math.min((item.level - 1) * 16, 48);
-                return (
-                  <Pressable
-                    key={`${item.title}-${item.page}-${i}`}
-                    onPress={() => goToPage(item.page)}
-                    style={({ pressed }) => [
-                      styles.tocItem,
-                      pressed && styles.tocItemPressed,
-                      { paddingLeft: 14 + indent },
-                    ]}
-                  >
-                    <Text
-                      numberOfLines={2}
-                      style={[
-                        styles.tocItemTitle,
-                        active && styles.tocItemTitleActive,
-                        item.level > 1 && styles.tocItemTitleSub,
-                      ]}
-                    >
-                      {item.title}
-                    </Text>
-                    <Text style={[styles.tocItemPage, active && styles.tocItemPageActive]}>
-                      {item.page}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-              {(!toc || !toc.length) && (
-                <Text style={styles.tocEmpty}>Este livro não tem índice</Text>
-              )}
-            </ScrollView>
-          </Pressable>
-        </Pressable>
-      </Modal>
+      {/* Sumario — mesma folha do player: sobe, escurece o fundo, fecha no arrasto */}
+      <Folha aberta={tocOpen} titulo="Capítulos" aoFechar={() => setTocOpen(false)}>
+        <ScrollView showsVerticalScrollIndicator={false}>
+          {toc?.map((item, i) => (
+            <LinhaFolha
+              key={`${item.title}-${item.page}-${i}`}
+              texto={item.title}
+              direita={String(item.page)}
+              ativo={chapterName === item.title}
+              subtitulo={item.level > 1}
+              recuo={Math.min((item.level - 1) * 16, 48)}
+              onPress={() => goToPage(item.page)}
+            />
+          ))}
+          {(!toc || !toc.length) ? (
+            <Text style={styles.tocEmpty}>Este livro não tem índice</Text>
+          ) : null}
+        </ScrollView>
+      </Folha>
     </SafeAreaView>
   );
 }
@@ -612,191 +597,6 @@ function TextView({ docId, chunks, chunkIdx, boundaries, activeBIdx, onPlayChunk
 }
 
 // ===== Player =====
-const SPEED_OPTIONS = [0.75, 1, 1.25, 1.5, 2];
-
-function Player({ coverId, chapter, page, totalPages, elapsed, total, pct, isPlaying, isLoading, onPlayPause, onSkip10, onChapterPress, speed, onSpeedChange, voice, voices, onVoiceChange }: {
-  coverId: string; chapter: string; page: number; totalPages: number;
-  elapsed: number; total: number; pct: number;
-  isPlaying: boolean; isLoading: boolean;
-  onPlayPause: () => void; onSkip10: (dir: 1 | -1) => void;
-  onChapterPress: () => void;
-  speed: number; onSpeedChange: (s: number) => void;
-  voice: string; voices: Voz[]; onVoiceChange: (v: string) => void;
-}) {
-  const [coverFailed, setCoverFailed] = useState(false);
-  const [speedOpen, setSpeedOpen] = useState(false);
-  const [voiceOpen, setVoiceOpen] = useState(false);
-  const voiceLabel = voices.find(v => v.name === voice)?.label
-    || voice.replace('pt-BR-', '').replace('Neural', '');
-
-  // Formato compacto: "1×" "1.5×" "0.75×"
-  const speedLabel = (Number.isInteger(speed) ? `${speed}` : `${speed}`) + '×';
-
-  return (
-    <>
-      <BlurView intensity={45} tint="dark" style={styles.playerPill}>
-        <View style={styles.progressBar}>
-          <View style={[styles.progressFill, { width: `${pct}%` }]} />
-        </View>
-
-        <View style={styles.mainRow}>
-          {coverFailed ? (
-            <View style={[styles.cover, styles.coverEmpty]}>
-              <Text style={styles.coverInitial}>e</Text>
-            </View>
-          ) : (
-            <Image
-              source={coverUrl(coverId)}
-              style={styles.cover}
-              contentFit="cover"
-              transition={200}
-              onError={() => setCoverFailed(true)}
-            />
-          )}
-          <Pressable style={styles.infoCol} onPress={onChapterPress} hitSlop={4}>
-            <Text numberOfLines={1} style={styles.chapterText}>{chapter}</Text>
-            <Text numberOfLines={1} style={styles.metaText}>
-              {fmt(elapsed)} · pág {page}/{totalPages} · {fmt(total)}
-            </Text>
-          </Pressable>
-
-          <Pressable onPress={() => onSkip10(-1)} hitSlop={4} style={styles.skipBtn}>
-            <SkipIcon dir="back" />
-            <Text style={styles.skipNum}>10</Text>
-          </Pressable>
-
-          <Pressable
-            onPress={onPlayPause}
-            disabled={isLoading}
-            style={({ pressed }) => [styles.playBtn, { opacity: pressed || isLoading ? 0.85 : 1 }]}
-          >
-            {isLoading ? (
-              <ActivityIndicator color={colors.ink} size="small" />
-            ) : isPlaying ? (
-              <PauseIcon />
-            ) : (
-              <PlayIcon />
-            )}
-          </Pressable>
-
-          <Pressable onPress={() => onSkip10(1)} hitSlop={4} style={styles.skipBtn}>
-            <SkipIcon dir="fwd" />
-            <Text style={styles.skipNum}>10</Text>
-          </Pressable>
-
-          <Pressable onPress={() => setVoiceOpen(true)} style={styles.voiceBtn} hitSlop={4}>
-            <Text style={styles.speedBtnText} numberOfLines={1}>{voiceLabel}</Text>
-          </Pressable>
-
-          <Pressable onPress={() => setSpeedOpen(true)} style={styles.speedBtn} hitSlop={4}>
-            <Text style={styles.speedBtnText}>{speedLabel}</Text>
-          </Pressable>
-        </View>
-      </BlurView>
-
-      {/* Modal de seleção de voz — mesmo padrão da velocidade */}
-      <Modal
-        visible={voiceOpen}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setVoiceOpen(false)}
-      >
-        <Pressable style={styles.sheetBackdrop} onPress={() => setVoiceOpen(false)}>
-          <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
-            <Text style={styles.sheetTitle}>Voz</Text>
-            {voices.map(v => {
-              const active = voice === v.name;
-              return (
-                <Pressable
-                  key={v.name}
-                  onPress={() => { onVoiceChange(v.name); setVoiceOpen(false); }}
-                  style={({ pressed }) => [styles.sheetItem, pressed && styles.sheetItemPressed]}
-                >
-                  <Text style={[styles.sheetItemText, active && styles.sheetItemActive]}>
-                    {v.label}
-                  </Text>
-                  {active ? <Text style={styles.sheetCheck}>✓</Text> : null}
-                </Pressable>
-              );
-            })}
-          </Pressable>
-        </Pressable>
-      </Modal>
-
-      {/* Modal de seleção de velocidade */}
-      <Modal
-        visible={speedOpen}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setSpeedOpen(false)}
-      >
-        <Pressable style={styles.sheetBackdrop} onPress={() => setSpeedOpen(false)}>
-          <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
-            <Text style={styles.sheetTitle}>Velocidade</Text>
-            {SPEED_OPTIONS.map(s => {
-              const active = speed === s;
-              return (
-                <Pressable
-                  key={s}
-                  onPress={() => { onSpeedChange(s); setSpeedOpen(false); }}
-                  style={({ pressed }) => [styles.sheetItem, pressed && styles.sheetItemPressed]}
-                >
-                  <Text style={[styles.sheetItemText, active && styles.sheetItemActive]}>{s}×</Text>
-                  {active ? <Text style={styles.sheetCheck}>✓</Text> : null}
-                </Pressable>
-              );
-            })}
-          </Pressable>
-        </Pressable>
-      </Modal>
-    </>
-  );
-}
-
-function PlayIcon() {
-  return (
-    <Svg width={20} height={20} viewBox="0 0 24 24" fill={colors.ink}>
-      <Path d="M8 5 L20 12 L8 19 Z" />
-    </Svg>
-  );
-}
-
-function PauseIcon() {
-  return (
-    <Svg width={20} height={20} viewBox="0 0 24 24" fill={colors.ink}>
-      <Path d="M6 5 H10 V19 H6 Z" />
-      <Path d="M14 5 H18 V19 H14 Z" />
-    </Svg>
-  );
-}
-
-function SkipIcon({ dir }: { dir: 'back' | 'fwd' }) {
-  return (
-    <Svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={2}>
-      {dir === 'back' ? (
-        <>
-          <Path d="M1 4v6h6" />
-          <Path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
-        </>
-      ) : (
-        <>
-          <Path d="M23 4v6h-6" />
-          <Path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
-        </>
-      )}
-    </Svg>
-  );
-}
-
-function fmt(ms: number): string {
-  if (!isFinite(ms) || isNaN(ms)) return '0:00';
-  const s = Math.floor(ms / 1000);
-  const h = Math.floor(s / 3600);
-  const m = Math.floor((s % 3600) / 60);
-  const sec = (s % 60).toString().padStart(2, '0');
-  return h > 0 ? `${h}:${m.toString().padStart(2, '0')}:${sec}` : `${m}:${sec}`;
-}
-
 const styles = StyleSheet.create({
   fill: { flex: 1, backgroundColor: colors.snow },
   center: { alignItems: 'center', justifyContent: 'center' },
@@ -850,163 +650,14 @@ const styles = StyleSheet.create({
     left: 0, right: 0, bottom: 0,
     paddingHorizontal: 10, paddingTop: 8,
   },
-  playerWrap: { paddingHorizontal: 0 }, // legado, não usado mais
-  playerPill: {
-    backgroundColor: 'rgba(20, 20, 22, 0.72)', // BlurView complementa
-    borderRadius: 20,
-    overflow: 'hidden',
-    borderWidth: 0.5,
-    borderColor: 'rgba(255,255,255,0.1)',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.25,
-    shadowRadius: 20,
-    elevation: 12,
-  },
-  progressBar: { height: 3, backgroundColor: 'rgba(255,255,255,0.12)' },
-  progressFill: { height: '100%', backgroundColor: '#8C9CFF' },
 
-  mainRow: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingVertical: 11, paddingHorizontal: 12, gap: 10,
-  },
-  cover: {
-    width: 46, height: 46, borderRadius: 9,
-    backgroundColor: colors.charcoal,
-  },
-  coverEmpty: { alignItems: 'center', justifyContent: 'center' },
-  coverInitial: { color: 'white', fontSize: 22, fontWeight: '900', fontFamily: fonts.display },
-  infoCol: { flex: 1, minWidth: 0, gap: 3 },
-  chapterText: { color: 'white', fontSize: 13, fontWeight: '700', letterSpacing: -0.1, fontFamily: fonts.display },
-  metaText: { color: 'rgba(255,255,255,0.55)', fontSize: 11 },
 
-  skipBtn: {
-    width: 38, height: 38, borderRadius: 19,
-    alignItems: 'center', justifyContent: 'center',
-    position: 'relative',
-  },
-  skipNum: {
-    position: 'absolute',
-    color: 'white',
-    fontSize: 7.5, fontWeight: '700',
-    letterSpacing: -0.4,
-  },
 
-  playBtn: {
-    width: 44, height: 44, borderRadius: 22,
-    backgroundColor: 'white',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  playGlyph: { color: colors.ink, fontSize: 16, fontWeight: '900' },
 
-  speedBtn: {
-    height: 28, minWidth: 38,
-    paddingHorizontal: 8,
-    borderRadius: 14,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    borderWidth: 0.5, borderColor: 'rgba(255,255,255,0.12)',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  voiceBtn: {
-    height: 28, minWidth: 62,
-    paddingHorizontal: 10,
-    borderRadius: 14,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    borderWidth: 0.5, borderColor: 'rgba(255,255,255,0.12)',
-    alignItems: 'center', justifyContent: 'center',
-    marginRight: 6,
-  },
-  speedBtnText: {
-    color: 'white',
-    fontSize: 11.5, fontWeight: '700',
-    letterSpacing: -0.2,
-  },
 
   // Sheet de velocidade
-  sheetBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'flex-end',
-  },
-  sheet: {
-    backgroundColor: 'white',
-    borderTopLeftRadius: 18, borderTopRightRadius: 18,
-    padding: 16, paddingBottom: 32,
-  },
-  sheetTitle: {
-    fontSize: 13, fontWeight: '600',
-    color: colors.slate,
-    textAlign: 'center',
-    marginBottom: 8,
-    letterSpacing: 0.3,
-    textTransform: 'uppercase',
-  },
-  sheetItem: {
-    flexDirection: 'row',
-    alignItems: 'center', justifyContent: 'space-between',
-    paddingVertical: 14, paddingHorizontal: 12,
-    borderRadius: 10,
-  },
-  sheetItemPressed: { backgroundColor: colors.cloud },
-  sheetItemText: {
-    fontSize: 17, fontWeight: '500',
-    color: colors.charcoal,
-    fontFamily: fonts.display,
-  },
-  sheetItemActive: { color: colors.ink, fontWeight: '700' },
-  sheetCheck: { fontSize: 18, color: colors.ink, fontWeight: '900' },
 
   // TOC sheet
-  tocSheet: {
-    backgroundColor: 'white',
-    borderTopLeftRadius: 18, borderTopRightRadius: 18,
-    paddingTop: 12, paddingBottom: 32,
-    maxHeight: '80%',
-  },
-  tocHeader: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 18, paddingBottom: 12,
-    borderBottomWidth: 1, borderBottomColor: colors.border,
-  },
-  tocHeaderTitle: {
-    fontSize: 16, fontWeight: '700',
-    color: colors.ink,
-    fontFamily: fonts.display,
-    letterSpacing: -0.2,
-  },
-  tocClose: {
-    fontSize: 24, color: colors.slate,
-    lineHeight: 24, fontWeight: '300',
-    paddingHorizontal: 6,
-  },
-  tocItem: {
-    flexDirection: 'row',
-    alignItems: 'center', justifyContent: 'space-between',
-    paddingVertical: 12, paddingRight: 14,
-    gap: 12,
-    borderBottomWidth: 1, borderBottomColor: '#F3F4F6',
-  },
-  tocItemPressed: { backgroundColor: colors.cloud },
-  tocItemTitle: {
-    flex: 1,
-    fontSize: 14, fontWeight: '500',
-    color: colors.charcoal,
-    fontFamily: fonts.body,
-    letterSpacing: -0.1,
-  },
-  tocItemTitleSub: {
-    color: colors.slate,
-    fontWeight: '400',
-    fontSize: 13,
-  },
-  tocItemTitleActive: { color: colors.ink, fontWeight: '700' },
-  tocItemPage: {
-    fontSize: 12, fontWeight: '500',
-    color: colors.mist,
-    fontVariant: ['tabular-nums'],
-    minWidth: 32, textAlign: 'right',
-  },
-  tocItemPageActive: { color: colors.ink, fontWeight: '700' },
   tocEmpty: {
     fontSize: 13, color: colors.slate,
     textAlign: 'center',
