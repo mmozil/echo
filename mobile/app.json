@@ -52,6 +52,13 @@
     "icon": "./assets/icon.png",
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "86421ce2-7c9e-422c-b480-c08334edbb88"
+      }
+    },
+    "owner": "m.ozil"
   }
 }

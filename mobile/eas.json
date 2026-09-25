@@ -1,0 +1,18 @@
+{
+  "cli": { "version": ">= 12.0.0", "appVersionSource": "remote" },
+  "build": {
+    "production": {
+      "autoIncrement": true,
+      "credentialsSource": "local"
+    }
+  },
+  "submit": {
+    "production": {
+      "ios": {
+        "ascApiKeyPath": "C:/Users/marce/Downloads/AuthKey_MFFW2225S8.p8",
+        "ascApiKeyId": "MFFW2225S8",
+        "ascApiKeyIssuerId": "d11f9ca4-970c-41f6-996b-69140a5d519f"
+      }
+    }
+  }
+}
