@@ -73,6 +73,11 @@ export const FOLGA = { top: 10, bottom: 10, left: 10, right: 10 } as const;
 //    «Continuar ouvindo» e na linha ativa das folhas: era texto ilegivel.
 //    O tom claro abaixo mantem o MESMO matiz (231,7 graus), so' escurece —
 //    sobe para 4,68:1. Sobre o escuro o original ja' da' 7,28:1 e fica.
+// Vermelho de acao destrutiva — o mesmo nos dois temas, como o systemRed.
+// «Avoid using the same color to mean different things»: este so' pinta
+// o que apaga ou desconecta.
+export const perigo = '#E5484D';
+
 export const acento = {
   sobreClaro: '#455FFF',  // texto, icone e barra em fundo claro
   sobreEscuro: '#8C9CFF', // dentro do player e das superficies escuras

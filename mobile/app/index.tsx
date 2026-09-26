@@ -26,6 +26,7 @@ import Svg, { Path } from 'react-native-svg';
 import { coverUrl, listDocuments, logout, initAuthToken, type DocSummary } from '@/lib/api';
 import { tipo, espaco, raio, useTema, useAcento, type Paleta } from '@/lib/theme';
 import { Toque, Progresso } from '@/components/Toque';
+import { MenuBolha, IconeInicio, IconeBuscar, IconeContinuar, IconeAjustes } from '@/components/MenuBolha';
 
 
 export default function Biblioteca() {
@@ -154,6 +155,45 @@ export default function Biblioteca() {
           ) : null
         }
         renderItem={({ item }) => <CartaoLivro item={item} onPress={() => abrir(item)} />}
+      />
+
+      {/* 🚨 Todo item leva a um destino REAL. Item de menu que nao vai a lugar
+          nenhum e' beco — e e' o que o proprio `validar_fluxo.py` proibe. */}
+      <MenuBolha
+        margemInferior={espaco.ar}
+        itens={[
+          {
+            chave: 'inicio',
+            rotulo: 'Início',
+            dica: 'Sua biblioteca',
+            icone: IconeInicio,
+            onPress: () => {},
+            desabilitado: true,   // ja' estamos aqui
+          },
+          {
+            chave: 'buscar',
+            rotulo: 'Buscar',
+            dica: 'Em todos os livros',
+            icone: IconeBuscar,
+            onPress: () => router.push('/buscar' as any),
+          },
+          {
+            chave: 'continuar',
+            rotulo: retomar ? 'Continuar' : 'Nada em leitura',
+            dica: retomar ? retomar.title : undefined,
+            icone: IconeContinuar,
+            destaque: !!retomar,
+            desabilitado: !retomar,
+            onPress: () => { if (retomar) abrir(retomar); },
+          },
+          {
+            chave: 'ajustes',
+            rotulo: 'Ajustes',
+            dica: 'Voz, conta e aparência',
+            icone: IconeAjustes,
+            onPress: () => router.push('/ajustes' as any),
+          },
+        ]}
       />
     </SafeAreaView>
   );

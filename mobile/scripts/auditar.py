@@ -72,7 +72,10 @@ def v3_escala_e_entrelinha():
 # Modo escuro: cor fixa nao responde ao tema. O player e' escuro de proposito.
 def v4_cor_fixa():
     for a, t in TUDO.items():
-        if "PlayerBar" in a or "Vidro" in a:
+        # Superficies que sao ESCURAS por desenho, nos dois temas: o player e o
+        # menu flutuante. Vidro escuro com texto branco nao «segue o tema» —
+        # ele e' o tema.
+        if any(x in a for x in ("PlayerBar", "Vidro", "MenuBolha")):
             continue
         fixas = sorted({h for h in re.findall(r"['\"](#[0-9A-Fa-f]{6})['\"]", t)})
         if fixas:

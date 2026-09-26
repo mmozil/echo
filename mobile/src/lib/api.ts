@@ -180,3 +180,19 @@ export function pageImageUrl(docId: string, page: number) {
 export function coverUrl(docId: string) {
   return { uri: `${API_BASE}/api/covers/${docId}.png`, headers: authHeaders() };
 }
+
+// === Busca dentro dos livros ===
+// 🚨 `GET /api/documents/{id}/search` existe no servidor desde sempre e o app
+//    NUNCA o usou — foi um dos buracos medidos ao comparar o que a API oferece
+//    com o que o app consome. Devolve o trecho com contexto dos dois lados.
+export type Achado = {
+  chunk_index: number;
+  page: number;
+  snippet: string;
+  position: number;
+};
+
+export async function buscarNoLivro(docId: string, q: string): Promise<Achado[]> {
+  const r = await api.get(`/api/documents/${docId}/search`, { params: { q } });
+  return (r.data?.results || []) as Achado[];
+}

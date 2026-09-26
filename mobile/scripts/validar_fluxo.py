@@ -125,7 +125,16 @@ def v_altura_ambigua():
 
 # ── 5 · a navegacao fecha o circuito ──────────────────────────────────────
 def v_navegacao():
-    ROTA = {"/": "app/index.tsx", "/login": "app/login.tsx", "/reader": "app/reader/[id].tsx"}
+    # 🚨 O mapa era escrito a' mao e nao conhecia tela nova: acusou «SEM TELA»
+    #    em duas que existem. Agora sai do proprio expo-router — a pasta `app/`
+    #    E' o roteador, entao a verdade esta' nos arquivos, nao numa lista.
+    ROTA = {}
+    for f in TELAS:
+        if f.endswith("_layout.tsx"):
+            continue
+        r = f[len("app/"):-len(".tsx")]
+        r = "/" if r == "index" else "/" + r.split("/")[0]
+        ROTA.setdefault(r, f)
     grafo, volta = [], set()
     for p, t in FONTE.items():
         for m in re.finditer(r"router\.(push|replace)\(\s*[`'\"]?([^`'\")]+)", t):
