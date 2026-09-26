@@ -14,6 +14,8 @@ import TrackPlayer, {
 import Svg, { Path } from 'react-native-svg';
 import { Player } from '@/components/PlayerBar';
 import { Folha, LinhaFolha } from '@/components/Folha';
+import { Toque } from '@/components/Toque';
+import { tipo, espaco, raio } from '@/lib/theme';
 import {
   ensurePlayerSetup, loadAndPlay, play as tpPlay, pause as tpPause,
   jumpBy, seekTo as tpSeek, setRate as tpSetRate, definirAvanco,
@@ -387,19 +389,55 @@ export default function Reader() {
 
   return (
     <SafeAreaView style={styles.fill} edges={['top', 'left', 'right']}>
-      <View style={styles.header}>
-        <Pressable onPress={() => router.back()} hitSlop={10} style={styles.backBtn}>
-          <Text style={styles.backChevron}>‹</Text>
-        </Pressable>
-        <Text numberOfLines={1} style={styles.headerTitle}>{doc.title}</Text>
-        <View style={styles.viewToggle}>
-          <Pressable onPress={() => setViewMode('pdf')} style={[styles.viewBtn, viewMode === 'pdf' && styles.viewBtnActive]}>
-            <Text style={[styles.viewBtnText, viewMode === 'pdf' && styles.viewBtnTextActive]}>PDF</Text>
-          </Pressable>
-          <Pressable onPress={() => setViewMode('text')} style={[styles.viewBtn, viewMode === 'text' && styles.viewBtnActive]}>
-            <Text style={[styles.viewBtnText, viewMode === 'text' && styles.viewBtnTextActive]}>Texto</Text>
-          </Pressable>
+      {/* Barra de navegacao: voltar · titulo · capitulos.
+          🚨 Antes: voltar era o TEXTO «‹» num alvo de ~38pt, o titulo tinha 14pt
+             (fora da escala) e «Capitulos» nao existia como botao — so' dava
+             para chegar tocando no texto do capitulo dentro da pilula, que
+             ninguem adivinha. «Ensure that each button clearly communicates
+             its purpose.» */}
+      <View style={styles.navBar}>
+        <Toque rotulo="Voltar para a biblioteca" onPress={() => router.back()} style={styles.navBotao}>
+          <Chevron />
+        </Toque>
+
+        <View style={styles.navCentro}>
+          <Text numberOfLines={1} style={styles.navTitulo}>{doc.title}</Text>
+          <Text numberOfLines={1} style={styles.navSub}>
+            {chapterName ? `${chapterName} · ` : ''}pág {currentPage} de {doc.total_pages}
+          </Text>
         </View>
+
+        <Toque
+          rotulo="Capítulos"
+          dica={toc?.length ? `${toc.length} capítulos` : 'Este livro não tem índice'}
+          onPress={() => setTocOpen(true)}
+          disabled={!toc?.length}
+          style={styles.navBotao}
+        >
+          <IconeLista ativo={!!toc?.length} />
+        </Toque>
+      </View>
+
+      {/* Alternador de visao — controle segmentado, largura inteira.
+          🚨 Antes os dois botoes tinham ~21pt de altura e 11pt de fonte. */}
+      <View style={styles.segmentado}>
+        {(['pdf', 'text'] as const).map((m) => {
+          const ativo = viewMode === m;
+          return (
+            <Toque
+              key={m}
+              rotulo={m === 'pdf' ? 'Ver as páginas do PDF' : 'Ver só o texto'}
+              onPress={() => setViewMode(m)}
+              escala={0.98}
+              alvoMinimo={false}
+              style={[styles.segmentoBotao, ativo && styles.segmentoAtivo]}
+            >
+              <Text style={[styles.segmentoTexto, ativo && styles.segmentoTextoAtivo]}>
+                {m === 'pdf' ? 'Páginas' : 'Texto'}
+              </Text>
+            </Toque>
+          );
+        })}
       </View>
 
       {viewMode === 'pdf' ? (
@@ -597,41 +635,58 @@ function TextView({ docId, chunks, chunkIdx, boundaries, activeBIdx, onPlayChunk
 }
 
 // ===== Player =====
+function Chevron() {
+  return (
+    <Svg width={26} height={26} viewBox="0 0 24 24" fill="none" stroke={colors.ink}
+      strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">
+      <Path d="M15 5l-7 7 7 7" />
+    </Svg>
+  );
+}
+
+function IconeLista({ ativo }: { ativo: boolean }) {
+  const c = ativo ? colors.ink : colors.mist;
+  return (
+    <Svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke={c}
+      strokeWidth={1.9} strokeLinecap="round">
+      <Path d="M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01" />
+    </Svg>
+  );
+}
+
 const styles = StyleSheet.create({
   fill: { flex: 1, backgroundColor: colors.snow },
   center: { alignItems: 'center', justifyContent: 'center' },
 
-  header: {
+  navBar: {
     flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: 12, paddingVertical: 8,
+    paddingHorizontal: espaco.pequeno, paddingVertical: espaco.micro,
     backgroundColor: colors.white,
-    borderBottomWidth: 1, borderBottomColor: colors.border,
-    gap: 8,
+    gap: espaco.pequeno,
   },
-  backBtn: { padding: 8 },
-  backChevron: { color: colors.ink, fontSize: 22, lineHeight: 22 },
-  headerTitle: {
-    flex: 1, color: colors.ink,
-    fontSize: 14, fontWeight: '600',
-    fontFamily: fonts.display,
-    letterSpacing: -0.2,
-  },
-  viewToggle: {
+  navBotao: { width: 44, height: 44 },
+  navCentro: { flex: 1, minWidth: 0, alignItems: 'center' },
+  navTitulo: { ...tipo.destaque, color: colors.ink, textAlign: 'center' },
+  navSub: { ...tipo.legenda, color: colors.slate, textAlign: 'center', marginTop: 1 },
+
+  segmentado: {
     flexDirection: 'row',
+    marginHorizontal: espaco.padrao, marginBottom: espaco.pequeno,
     backgroundColor: colors.cloud,
-    borderRadius: 8, padding: 3, gap: 2,
+    borderRadius: raio.pequeno, padding: 2, gap: 2,
+    borderBottomWidth: 0,
   },
-  viewBtn: {
-    paddingHorizontal: 10, paddingVertical: 4,
-    borderRadius: 6,
+  segmentoBotao: {
+    flex: 1, minHeight: 36, borderRadius: 6,
+    alignItems: 'center', justifyContent: 'center',
   },
-  viewBtnActive: { backgroundColor: colors.white },
-  viewBtnText: {
-    fontSize: 11, fontWeight: '600',
-    color: colors.slate,
-    letterSpacing: 0.1,
+  segmentoAtivo: {
+    backgroundColor: colors.white,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1, shadowRadius: 3, elevation: 2,
   },
-  viewBtnTextActive: { color: colors.ink },
+  segmentoTexto: { ...tipo.subtitulo, fontWeight: '600', color: colors.slate },
+  segmentoTextoAtivo: { color: colors.ink },
 
   pageWrap: { marginVertical: 4 },
   pageImg: { width: SCREEN_W, height: PAGE_HEIGHT, backgroundColor: 'white' },
@@ -639,7 +694,7 @@ const styles = StyleSheet.create({
   textWrap: { padding: 24, paddingBottom: 40 },
   textChunk: { marginBottom: 18 },
   textBody: {
-    fontSize: 16, lineHeight: 26,
+    fontSize: 17, lineHeight: 26,
     color: colors.charcoal,
     fontFamily: fonts.body,
   },
@@ -658,9 +713,5 @@ const styles = StyleSheet.create({
   // Sheet de velocidade
 
   // TOC sheet
-  tocEmpty: {
-    fontSize: 13, color: colors.slate,
-    textAlign: 'center',
-    paddingVertical: 32,
-  },
+  tocEmpty: { ...tipo.chamada, color: colors.slate, textAlign: 'center', paddingVertical: espaco.ar },
 });

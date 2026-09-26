@@ -12,7 +12,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import Svg, { Path } from 'react-native-svg';
-import { colors } from '@/lib/theme';
+import { colors, tipo, espaco } from '@/lib/theme';
 
 const { height: SCREEN_H } = Dimensions.get('window');
 export const ACENTO = '#8C9CFF';
@@ -120,9 +120,9 @@ const estilos = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.18)', marginTop: 9, marginBottom: 4,
   },
   titulo: {
-    fontSize: 13, fontWeight: '700', color: colors.slate,
+    ...tipo.nota, fontWeight: '700', color: colors.slate,
     letterSpacing: 0.4, textTransform: 'uppercase',
-    paddingHorizontal: 12, paddingTop: 8, paddingBottom: 6,
+    paddingHorizontal: espaco.medio, paddingTop: espaco.pequeno, paddingBottom: espaco.micro,
   },
   // 🚨 56 de altura: a Apple pede 44pt de alvo e a linha anterior nao chegava la'.
   linha: {
@@ -131,10 +131,11 @@ const estilos = StyleSheet.create({
   },
   linhaTocada: { backgroundColor: 'rgba(0,0,0,0.05)' },
   linhaCorpo: { flex: 1, minWidth: 0 },
-  linhaTexto: { fontSize: 17, color: colors.ink },
-  linhaTextoSub: { fontSize: 15, color: colors.slate },
+  linhaTexto: { ...tipo.corpo, color: colors.ink },
+  linhaTextoSub: { ...tipo.subtitulo, color: colors.slate },
   linhaAtiva: { fontWeight: '700', color: ACENTO },
-  linhaAviso: { fontSize: 12, color: colors.slate, marginTop: 2 },
-  linhaDireita: { fontSize: 14, color: colors.mist, fontVariant: ['tabular-nums'] },
+  linhaAviso: { ...tipo.legenda, color: colors.slate, marginTop: 2 },
+  // 🚨 14pt nao existe na escala do iOS. Footnote = 13/18.
+  linhaDireita: { ...tipo.nota, color: colors.mist, fontVariant: ['tabular-nums'] },
   linhaDireitaAtiva: { color: ACENTO, fontWeight: '700' },
 });

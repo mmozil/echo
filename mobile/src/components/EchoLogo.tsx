@@ -21,7 +21,7 @@ export function EchoLogo({ size = 'md' }: { size?: 'sm' | 'md' | 'lg' }) {
           top: (dim - r * 0.85) / 2, left: (dim - r * 0.85) / 2,
         }]} />
       </View>
-      <Text style={[styles.text, { fontSize: txt }]}>echo.</Text>
+      <Text style={[styles.text, { fontSize: txt, lineHeight: Math.round(txt * 1.15) }]}>echo.</Text>
     </View>
   );
 }

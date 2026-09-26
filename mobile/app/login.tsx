@@ -3,7 +3,7 @@ import { View, Text, TextInput, Pressable, ActivityIndicator, KeyboardAvoidingVi
 import { router } from 'expo-router';
 import { login } from '@/lib/api';
 import { EchoLogo } from '@/components/EchoLogo';
-import { colors, fonts } from '@/lib/theme';
+import { colors, tipo, espaco, raio } from '@/lib/theme';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -73,25 +73,30 @@ export default function Login() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.snow },
-  inner: { flex: 1, justifyContent: 'center', padding: 28 },
-  logoRow: { marginBottom: 48 },
-  title: { color: colors.ink, fontSize: 26, fontWeight: '700', fontFamily: fonts.display, letterSpacing: -0.5, marginBottom: 4 },
-  subtitle: { color: colors.slate, fontSize: 13, marginBottom: 28 },
-  label: { color: colors.charcoal, fontSize: 12, fontWeight: '500', marginBottom: 6, letterSpacing: 0.2 },
+  // 🚨 24 e' a grade; 28 nao era multiplo de 4 nem de 8.
+  inner: { flex: 1, justifyContent: 'center', padding: espaco.ar },
+  logoRow: { marginBottom: espaco.heroi },
+  // 🚨 26pt nao existe na escala da Apple. Title 1 = 28/34.
+  title: { ...tipo.titulo1, color: colors.ink, letterSpacing: -0.5, marginBottom: espaco.micro },
+  subtitle: { ...tipo.nota, color: colors.slate, marginBottom: espaco.ar },
+  label: { ...tipo.legenda, fontWeight: '600', color: colors.charcoal, marginBottom: espaco.micro },
   input: {
     backgroundColor: colors.white,
     color: colors.ink,
-    paddingHorizontal: 14, paddingVertical: 13,
-    borderRadius: 10, fontSize: 15,
-    marginBottom: 16,
+    // 🚨 Corpo e' 17pt: o padrao de leitura do iOS. 15 obrigava a apertar os
+    //    olhos justamente onde se digita e-mail e senha.
+    ...tipo.corpo,
+    paddingHorizontal: espaco.padrao, paddingVertical: espaco.medio,
+    borderRadius: raio.medio,
+    marginBottom: espaco.padrao,
     borderWidth: 1, borderColor: colors.border,
   },
   btn: {
     backgroundColor: colors.ink,
-    paddingVertical: 14,
-    borderRadius: 10,
-    alignItems: 'center',
-    marginTop: 8,
+    minHeight: 50,
+    borderRadius: raio.medio,
+    alignItems: 'center', justifyContent: 'center',
+    marginTop: espaco.pequeno,
   },
-  btnText: { color: colors.snow, fontWeight: '600', fontSize: 15, letterSpacing: -0.1, fontFamily: fonts.body },
+  btnText: { ...tipo.destaque, color: colors.snow },
 });

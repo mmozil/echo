@@ -84,6 +84,9 @@ export type DocSummary = {
   total_chunks: number;
   has_cover?: boolean;
   current_chunk?: number;
+  // 🚨 `list_documents` (src/database.py) ja' devolve os dois; o app
+  //    ignorava e mostrava os livros todos iguais.
+  last_read_at?: string;
 };
 
 export type Chunk = {

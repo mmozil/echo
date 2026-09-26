@@ -23,7 +23,7 @@ import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-g
 import { BlurView } from 'expo-blur';
 import { Image } from 'expo-image';
 import Svg, { Path } from 'react-native-svg';
-import { colors } from '@/lib/theme';
+import { colors, tipo, espaco } from '@/lib/theme';
 import { Folha, LinhaFolha, ACENTO } from './Folha';
 import { coverUrl } from '@/lib/api';
 
@@ -143,7 +143,7 @@ function Barra({ pct, largura, alturaRepouso, alturaArrasto, onSeek, mostrarTemp
     <View>
       <GestureDetector gesture={pan}>
         {/* a area de toque e' bem maior que o traco — 3px nao se acerta com o dedo */}
-        <View style={[estilos.barraToque, { width: largura }]} hitSlop={10}>
+        <View style={[estilos.barraToque, { width: largura }]} hitSlop={11}>
           <Animated.View style={[estilos.barraTrilho, trilho]}>
             <Animated.View style={[estilos.barraCheia, preenchido]} />
           </Animated.View>
@@ -410,16 +410,19 @@ const estilos = StyleSheet.create({
   linhaPrincipal: { flexDirection: 'row', alignItems: 'center', paddingVertical: 11, paddingHorizontal: 12, gap: 10 },
   capa: { width: 40, height: 40, borderRadius: 8, backgroundColor: 'rgba(255,255,255,0.08)' },
   capaVazia: { alignItems: 'center', justifyContent: 'center' },
-  capaLetra: { color: 'rgba(255,255,255,0.6)', fontSize: 20, fontWeight: '700' },
-  capaLetraGrande: { color: 'rgba(255,255,255,0.5)', fontSize: 64, fontWeight: '700' },
+  capaLetra: { ...tipo.titulo3, fontWeight: '700', color: 'rgba(255,255,255,0.6)' },
+  capaLetraGrande: { fontSize: 64, lineHeight: 70, fontWeight: '700', color: 'rgba(255,255,255,0.5)' },
   colunaInfo: { flex: 1, minWidth: 0 },
-  capitulo: { color: 'white', fontSize: 14, fontWeight: '600' },
-  meta: { color: 'rgba(255,255,255,0.55)', fontSize: 11, marginTop: 2 },
-  pular: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
-  pularNum: { position: 'absolute', color: 'rgba(255,255,255,0.92)', fontSize: 8, fontWeight: '700', marginTop: 1 },
+  capitulo: { ...tipo.subtitulo, fontWeight: '600', color: 'white' },
+  meta: { ...tipo.legenda2, color: 'rgba(255,255,255,0.55)', marginTop: 2 },
+  // 🚨 Era 40x40. A Apple pede 44 minimo, e sao os botoes mais usados do app.
+  pular: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  // 🚨 8pt nao existe: o minimo publicado para iOS e' 11.
+  pularNum: { position: 'absolute', ...tipo.legenda2, fontWeight: '700', color: 'rgba(255,255,255,0.92)', marginTop: 1 },
   tocar: { width: 46, height: 46, borderRadius: 23, backgroundColor: 'white' },
 
   // barra
+  // 22 + 11 de folga em cima e embaixo = 44 de alvo real.
   barraToque: { height: 22, justifyContent: 'center' },
   barraTrilho: { backgroundColor: 'rgba(255,255,255,0.14)', overflow: 'hidden', width: '100%' },
   barraCheia: { height: '100%', backgroundColor: ACENTO },
@@ -429,7 +432,7 @@ const estilos = StyleSheet.create({
     shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 4, shadowOffset: { width: 0, height: 1 },
   },
   temposLinha: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 2 },
-  tempo: { color: 'rgba(255,255,255,0.5)', fontSize: 11, fontVariant: ['tabular-nums'] },
+  tempo: { ...tipo.legenda2, color: 'rgba(255,255,255,0.5)', fontVariant: ['tabular-nums'] },
   tempoAtivo: { color: 'white', fontWeight: '600' },
 
   // folha
@@ -446,15 +449,16 @@ const estilos = StyleSheet.create({
     shadowColor: '#000', shadowOpacity: 0.5, shadowRadius: 28, shadowOffset: { width: 0, height: 14 },
   },
   grandeTexto: { marginTop: 30 },
-  grandeTitulo: { color: 'white', fontSize: 21, fontWeight: '700', letterSpacing: -0.3 },
-  grandeCapitulo: { color: 'rgba(255,255,255,0.55)', fontSize: 15, marginTop: 5 },
+  // 🚨 21pt nao existe na escala. Title 2 = 22/28.
+  grandeTitulo: { ...tipo.titulo2, color: 'white', letterSpacing: -0.3 },
+  grandeCapitulo: { ...tipo.subtitulo, color: 'rgba(255,255,255,0.55)', marginTop: espaco.micro },
   grandeBarra: { marginTop: 26, alignItems: 'center' },
   grandeControles: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 34, marginTop: 26 },
   pularGrande: { width: 58, height: 58, alignItems: 'center', justifyContent: 'center' },
-  pularNumGrande: { position: 'absolute', color: 'rgba(255,255,255,0.92)', fontSize: 10, fontWeight: '700', marginTop: 1 },
+  pularNumGrande: { position: 'absolute', ...tipo.legenda, fontWeight: '700', color: 'rgba(255,255,255,0.92)', marginTop: 1 },
   tocarGrande: { width: 76, height: 76, borderRadius: 38, backgroundColor: 'white' },
   grandeRodape: { flexDirection: 'row', gap: 12, marginTop: 'auto', marginBottom: 38 },
   grandePastilha: { flex: 1, backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 16, paddingVertical: 12, paddingHorizontal: 14 },
-  grandePastilhaRotulo: { color: 'rgba(255,255,255,0.45)', fontSize: 11, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.4 },
-  grandePastilhaValor: { color: 'white', fontSize: 16, fontWeight: '600', marginTop: 3 },
+  grandePastilhaRotulo: { ...tipo.legenda2, fontWeight: '600', color: 'rgba(255,255,255,0.45)', textTransform: 'uppercase', letterSpacing: 0.4 },
+  grandePastilhaValor: { ...tipo.chamada, fontWeight: '600', color: 'white', marginTop: espaco.micro },
 });
