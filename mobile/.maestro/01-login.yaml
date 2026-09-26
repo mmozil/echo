@@ -1,0 +1,33 @@
+# Entrar — a porta do app.
+#
+# 🚨 Roda num simulador de iPhone na nuvem do EAS, contra o build que VAI
+#    subir. E' a diferenca entre «compila» e «funciona»: `tsc` e `eas build`
+#    sairam 0 com o app quebrado, e so' o dono descobriu, depois de 7 builds.
+appId: com.hovio.echo
+env:
+  EMAIL: ${MAESTRO_EMAIL}
+  SENHA: ${MAESTRO_SENHA}
+---
+- launchApp:
+    clearState: true
+
+# A tela tem de APARECER — se ficar em branco, o app morreu no arranque e e'
+# exatamente o que nenhum build pegou.
+- assertVisible: 'Entrar'
+- assertVisible: 'Email'
+- assertVisible: 'Senha'
+
+- tapOn: 'Email'
+- inputText: ${EMAIL}
+- tapOn: 'Senha'
+- inputText: ${SENHA}
+
+# O rotulo vem do `accessibilityLabel` — tocar pelo papel de botao, nao pelo
+# texto, prova que o VoiceOver tambem o alcanca.
+- tapOn:
+    id: 'Entrar na sua conta'
+
+# Passou do login? Entao a biblioteca desenhou.
+- assertVisible:
+    text: 'Biblioteca'
+    timeout: 20000

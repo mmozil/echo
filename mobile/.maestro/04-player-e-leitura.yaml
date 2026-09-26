@@ -1,0 +1,75 @@
+# O player: ouvir, arrastar, abrir «Tocando agora», trocar voz e velocidade.
+#
+# 🚨 Este e' o unico pedaco que continuou de pe' quando o resto ruiu — porque
+#    os botoes dele tem tamanho FIXO. Justamente por isso ele nao serve de
+#    prova de que o app esta' bem: tem de ser testado junto com os outros.
+appId: com.hovio.echo
+---
+- launchApp
+- assertVisible: 'Biblioteca'
+- tapOn:
+    text: 'Continuar .*'
+    index: 0
+- assertVisible:
+    text: 'pág .* de .*'
+    timeout: 20000
+
+# ── Tocar ────────────────────────────────────────────────────────────────
+- tapOn:
+    id: 'Tocar'
+    optional: true
+# O relogio anda: se o tempo nao muda, o audio nao saiu.
+- assertVisible:
+    text: '\d+:\d\d .*'
+    timeout: 25000
+
+# ── «Tocando agora» pelo TOQUE (alternativa ao gesto) ────────────────────
+# «Give people more than one way to interact with your app» (HIG, Gestures):
+# puxar para cima e' atalho, tocar na capa e' o caminho que qualquer um acha.
+- tapOn:
+    id: 'Abrir Tocando agora'
+- assertVisible:
+    text: 'VOZ'
+    timeout: 8000
+- assertVisible: 'VELOCIDADE'
+
+# ── Trocar velocidade: a folha SOBE e FECHA ──────────────────────────────
+- tapOn:
+    text: 'Velocidade: .*'
+- assertVisible:
+    text: 'VELOCIDADE'
+    timeout: 8000
+- tapOn: '1.5×'
+- assertVisible:
+    text: 'Velocidade: 1.5×'
+    timeout: 8000
+
+# ── Trocar voz ───────────────────────────────────────────────────────────
+- tapOn:
+    text: 'Voz: .*'
+- assertVisible:
+    text: 'VOZ'
+    timeout: 8000
+- tapOn:
+    id: 'Fechar'
+
+# ── Fechar «Tocando agora» puxando para baixo ────────────────────────────
+- swipe:
+    start: 50%, 15%
+    end: 50%, 92%
+- assertVisible:
+    text: 'pág .* de .*'
+    timeout: 10000
+
+# ── Sair da tela NAO para o audio ────────────────────────────────────────
+# Foi a primeira queixa do dono nesta empreitada: «quando eu saio da tela ele
+# para de falar».
+- tapOn:
+    id: 'Voltar para a biblioteca'
+- assertVisible: 'Biblioteca'
+- tapOn:
+    text: 'Continuar .*'
+    index: 0
+- assertVisible:
+    text: '\d+:\d\d .*'
+    timeout: 15000

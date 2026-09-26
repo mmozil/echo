@@ -7,6 +7,12 @@
     "production": {
       "autoIncrement": true,
       "credentialsSource": "local"
+    },
+    "e2e": {
+      "withoutCredentials": true,
+      "ios": {
+        "simulator": true
+      }
     }
   },
   "submit": {

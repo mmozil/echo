@@ -1,0 +1,52 @@
+# Biblioteca -> livro -> VOLTA.
+#
+# 🚨 Este arquivo existe por causa de duas queixas reais do dono, no mesmo dia:
+#    «tudo desconfigurado» e «não volta para a tela anterior».
+#    A causa foi o `Toque` impor `height: '100%'` + centro a todo filho: nos
+#    cartoes `flex: 1` o layout desmontava e o cartao ficava sem altura — e
+#    cartao sem altura NAO SE TOCA. Os passos abaixo pegariam isso sozinhos:
+#    se o cartao nao abre, `tapOn` falha; se a biblioteca nao desenha, o
+#    `assertVisible` do retorno falha.
+appId: com.hovio.echo
+---
+- launchApp
+
+- assertVisible: 'Biblioteca'
+
+# «Continuar» so' aparece quando ha' leitura em andamento — e' o cartao que
+# prova que o progresso vindo da API esta' sendo usado, nao ignorado.
+- assertVisible: 'Continuar'
+
+# O cartao TEM de abrir. Se o layout quebrou, ele nao tem altura e nao recebe
+# o toque: e' aqui que o defeito de 26/09 teria morrido antes do TestFlight.
+- tapOn:
+    text: 'Continuar .*'
+    index: 0
+
+# Chegou no leitor: a barra diz onde se esta'.
+- assertVisible:
+    text: 'pág .* de .*'
+    timeout: 20000
+
+# ── A VOLTA, pelo botao ───────────────────────────────────────────────────
+- tapOn:
+    id: 'Voltar para a biblioteca'
+- assertVisible:
+    text: 'Biblioteca'
+    timeout: 10000
+
+# ── A VOLTA, pelo gesto de arrastar da borda ──────────────────────────────
+# O iOS espera esse gesto em toda tela empilhada. Ele e' separado do botao:
+# ja' aconteceu de um funcionar e o outro nao.
+- tapOn:
+    text: 'Continuar .*'
+    index: 0
+- assertVisible:
+    text: 'pág .* de .*'
+    timeout: 20000
+- swipe:
+    start: 2%, 50%
+    end: 90%, 50%
+- assertVisible:
+    text: 'Biblioteca'
+    timeout: 10000

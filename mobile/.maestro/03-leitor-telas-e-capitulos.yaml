@@ -1,0 +1,59 @@
+# Dentro do livro: alternar as vistas, abrir capitulos, e SAIR de tudo.
+#
+# 🚨 «Always give people an obvious way to dismiss a modal view» (HIG, Modality).
+#    As folhas so' fechavam por arrasto ou toque no fundo — nenhum dos dois
+#    APARECE. Aqui o ✕ e' exercitado explicitamente.
+appId: com.hovio.echo
+---
+- launchApp
+- assertVisible: 'Biblioteca'
+- tapOn:
+    text: 'Continuar .*'
+    index: 0
+- assertVisible:
+    text: 'pág .* de .*'
+    timeout: 20000
+
+# ── O alternador de vista ────────────────────────────────────────────────
+# Antes tinha ~21pt de altura e fonte 11 — perto do intocavel. Se o alvo
+# encolher de novo, o `tapOn` falha aqui.
+- tapOn:
+    id: 'Ver só o texto'
+- assertVisible: 'Texto'
+- tapOn:
+    id: 'Ver as páginas do PDF'
+- assertVisible: 'Páginas'
+
+# ── Capitulos ────────────────────────────────────────────────────────────
+# 🚨 Este botao NAO EXISTIA: so' dava para chegar tocando no texto do capitulo
+#    dentro da pilula, que ninguem adivinha.
+- tapOn:
+    id: 'Capítulos'
+- assertVisible:
+    text: 'CAPÍTULOS'
+    timeout: 8000
+
+# A lista tem de ROLAR. O gesto de fechar da folha vive so' no cabecalho
+# justamente para nao disputar com a rolagem — se voltar a disputar, este
+# passo denuncia.
+- scroll
+- assertVisible: 'CAPÍTULOS'
+
+# Fechar pelo ✕ visivel.
+- tapOn:
+    id: 'Fechar'
+- assertNotVisible: 'CAPÍTULOS'
+
+# Escolher um capitulo FECHA a folha e leva a' pagina.
+- tapOn:
+    id: 'Capítulos'
+- assertVisible: 'CAPÍTULOS'
+- tapOn:
+    text: '.*'
+    index: 2
+- assertNotVisible:
+    text: 'CAPÍTULOS'
+    timeout: 8000
+- assertVisible:
+    text: 'pág .* de .*'
+    timeout: 10000

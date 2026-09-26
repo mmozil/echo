@@ -1,0 +1,77 @@
+# Validar ANTES de publicar — o portao que faltou.
+#
+# 🚨 Por que existe: sete builds foram ao TestFlight sem ninguem ver o app
+#    rodando. `tsc --noEmit` saiu 0 e `eas build` saiu 0 com o app quebrado:
+#    os dois provam que o codigo MONTA, nenhum prova que a tela DESENHA. O
+#    dono descobriu por ultimo, e o relato foi «apenas o play esta'
+#    funcionando; o resto ficou tudo desconfigurado, nao volta».
+#
+# A ordem aqui nao e' decorativa. Publicar so' acontece depois que um iPhone
+# de verdade (simulado na nuvem) percorreu as telas.
+#
+#   auditar  ->  build de simulador  ->  percorrer as telas  ->  publicar
+#
+# Disparar:  eas workflow:run .eas/workflows/validar-e-publicar.yml
+#
+# ⚠️ Segredos usados (definir em Expo -> Project settings -> Secrets):
+#      MAESTRO_EMAIL · MAESTRO_SENHA  — conta de teste, NUNCA a do dono.
+
+name: Validar e publicar o Discoo
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  # ── 1 · o que da' para provar sem ligar aparelho ────────────────────────
+  auditar:
+    name: Auditoria estatica
+    steps:
+      - uses: eas/checkout
+      - name: Instalar
+        run: npm ci
+      - name: Tipos
+        run: npx tsc --noEmit -p tsconfig.json
+      - name: Sete armadilhas conhecidas
+        # A primeira delas pega exatamente o defeito de 26/09: estilo que
+        # impoe 100% + centro e e' aplicado a um contenedor de `children`.
+        run: python scripts/auditar.py
+
+  # ── 2 · um binario que roda no simulador ───────────────────────────────
+  build_simulador:
+    name: Build para o simulador
+    needs: [auditar]
+    type: build
+    params:
+      platform: ios
+      profile: e2e
+
+  # ── 3 · alguem percorre as telas ───────────────────────────────────────
+  # E' este passo que teria custado 0 build em vez de 2.
+  percorrer:
+    name: Percorrer as telas
+    needs: [build_simulador]
+    type: maestro
+    params:
+      build_id: ${{ needs.build_simulador.outputs.build_id }}
+      flow_path: |
+        .maestro/01-login.yaml
+        .maestro/02-biblioteca-e-volta.yaml
+        .maestro/03-leitor-telas-e-capitulos.yaml
+        .maestro/04-player-e-leitura.yaml
+
+  # ── 4 · so' agora ──────────────────────────────────────────────────────
+  publicar:
+    name: Build de producao e envio
+    needs: [percorrer]
+    type: build
+    params:
+      platform: ios
+      profile: production
+
+  enviar:
+    name: Enviar ao TestFlight
+    needs: [publicar]
+    type: submit
+    params:
+      build_id: ${{ needs.publicar.outputs.build_id }}
+      profile: production
