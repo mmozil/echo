@@ -311,14 +311,14 @@ const criarEstilos = (c: Paleta, ac: string) => StyleSheet.create({
   // continuar
   retomar: {
     backgroundColor: c.white,
-    borderRadius: raio.grande,
+    borderRadius: raio.cartao,
     padding: espaco.medio,
     shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.06, shadowRadius: 12, elevation: 3,
   },
   retomarLinha: { flexDirection: 'row', gap: espaco.medio, width: '100%' },
   retomarCapa: {
-    width: 76, aspectRatio: 0.72, borderRadius: raio.pequeno, overflow: 'hidden',
+    width: 84, aspectRatio: 0.72, borderRadius: raio.medio, overflow: 'hidden',
     backgroundColor: c.charcoal,
   },
   retomarCorpo: { flex: 1, minWidth: 0, justifyContent: 'center' },
@@ -349,7 +349,8 @@ const criarEstilos = (c: Paleta, ac: string) => StyleSheet.create({
   vazioTexto: { ...tipo.chamada, color: c.slate, textAlign: 'center' },
   vazioBotao: {
     marginTop: espaco.pequeno, minHeight: 48, paddingHorizontal: espaco.ar,
-    borderRadius: raio.pilula, backgroundColor: c.ink, justifyContent: 'center',
+    borderRadius: raio.pilula, backgroundColor: c.ink,
+    alignItems: 'center', justifyContent: 'center',
   },
   vazioBotaoTexto: { ...tipo.destaque, color: c.white },
 });

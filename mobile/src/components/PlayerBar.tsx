@@ -31,6 +31,7 @@ const ACENTO = acento.sobreEscuro;
 import { coverUrl } from '@/lib/api';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
+const PressavelAnimado = Animated.createAnimatedComponent(Pressable);
 
 const SUPERFICIE_CHEIA = '#141416';
 
@@ -66,19 +67,17 @@ function Botao({ children, onPress, style, disabled, escala = 0.88, hitSlop = 8 
   const k = useSharedValue(1);
   const anim = useAnimatedStyle(() => ({ transform: [{ scale: k.value }] }));
   return (
-    <Animated.View style={[style, anim]}>
-      <Pressable
-        onPressIn={() => { k.value = anima(alvo, MOLA, reduzido); }}
-        onPressOut={() => { k.value = anima(1, MOLA, reduzido); }}
-        onPress={onPress}
-        disabled={disabled}
-        hitSlop={hitSlop}
-        accessibilityRole="button"
-        style={estilos.botaoInterior}
-      >
-        {children}
-      </Pressable>
-    </Animated.View>
+    <PressavelAnimado
+      onPressIn={() => { k.value = anima(alvo, MOLA, reduzido); }}
+      onPressOut={() => { k.value = anima(1, MOLA, reduzido); }}
+      onPress={onPress}
+      disabled={disabled}
+      hitSlop={hitSlop}
+      accessibilityRole="button"
+      style={[estilos.centrado, style, anim]}
+    >
+      {children}
+    </PressavelAnimado>
   );
 }
 
@@ -408,14 +407,16 @@ function IconePular({ dir, tamanho = 22 }: { dir: 'back' | 'fwd'; tamanho?: numb
 }
 
 const estilos = StyleSheet.create({
-  botaoInterior: { alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%' },
+  // 🚨 Sem `width/height: 100%`: isso quebrou o resto do app onde o pai
+  //    nao tem tamanho fixo. Aqui so' centra.
+  centrado: { alignItems: 'center', justifyContent: 'center' },
 
   // pilula
   pilula: {
     // 🚨 SEM `backgroundColor` aqui: no caminho do Liquid Glass quem pinta e'
     //    o iOS, e uma cor por cima cobriria o material. O recuo para
     //    `expo-blur` poe a sua propria cor la' dentro do `Vidro`.
-    borderRadius: 20,
+    borderRadius: 26,
     overflow: 'hidden',
     borderWidth: 0.5,
     borderColor: 'rgba(255,255,255,0.1)',
@@ -428,7 +429,7 @@ const estilos = StyleSheet.create({
   alca: { alignSelf: 'center', width: 34, height: 4, borderRadius: 2,
     backgroundColor: 'rgba(255,255,255,0.32)', marginTop: 7, marginBottom: 1 },
   linhaPrincipal: { flexDirection: 'row', alignItems: 'center', paddingVertical: 11, paddingHorizontal: 12, gap: 10 },
-  capa: { width: 40, height: 40, borderRadius: 8, backgroundColor: 'rgba(255,255,255,0.08)' },
+  capa: { width: 40, height: 40, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.08)' },
   capaVazia: { alignItems: 'center', justifyContent: 'center' },
   capaLetra: { ...tipo.titulo3, fontWeight: '700', color: 'rgba(255,255,255,0.6)' },
   capaLetraGrande: { fontSize: 64, lineHeight: 70, fontWeight: '700', color: 'rgba(255,255,255,0.5)' },
@@ -465,7 +466,7 @@ const estilos = StyleSheet.create({
   grandeCapaCaixa: { alignItems: 'center', marginTop: SCREEN_H > 800 ? 28 : 12 },
   grandeCapa: {
     width: Math.min(SCREEN_W - 96, 300), height: Math.min(SCREEN_W - 96, 300),
-    borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.08)',
+    borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.08)',
     shadowColor: '#000', shadowOpacity: 0.5, shadowRadius: 28, shadowOffset: { width: 0, height: 14 },
   },
   grandeTexto: { marginTop: 30 },
@@ -478,7 +479,7 @@ const estilos = StyleSheet.create({
   pularNumGrande: { position: 'absolute', ...tipo.legenda, fontWeight: '700', color: 'rgba(255,255,255,0.92)', marginTop: 1 },
   tocarGrande: { width: 76, height: 76, borderRadius: 38, backgroundColor: 'white' },
   grandeRodape: { flexDirection: 'row', gap: 12, marginTop: 'auto', marginBottom: 38 },
-  grandePastilha: { flex: 1, backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 16, paddingVertical: 12, paddingHorizontal: 14 },
+  grandePastilha: { flex: 1, backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 20, paddingVertical: 12, paddingHorizontal: 14 },
   grandePastilhaRotulo: { ...tipo.legenda2, fontWeight: '600', color: 'rgba(255,255,255,0.45)', textTransform: 'uppercase', letterSpacing: 0.4 },
   grandePastilhaValor: { ...tipo.chamada, fontWeight: '600', color: 'white', marginTop: espaco.micro },
 });

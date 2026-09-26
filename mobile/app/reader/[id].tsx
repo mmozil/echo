@@ -678,7 +678,9 @@ const criarEstilos = (c: Paleta) => StyleSheet.create({
     backgroundColor: c.white,
     gap: espaco.pequeno,
   },
-  navBotao: { width: 44, height: 44 },
+  // 🚨 O centro vem DAQUI agora. Antes o `Toque` impunha aos filhos, e
+  //    era isso que desmontava todo layout que nao fosse icone.
+  navBotao: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   navCentro: { flex: 1, minWidth: 0, alignItems: 'center' },
   navTitulo: { ...tipo.destaque, color: c.ink, textAlign: 'center' },
   navSub: { ...tipo.legenda, color: c.slate, textAlign: 'center', marginTop: 1 },

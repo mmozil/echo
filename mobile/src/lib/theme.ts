@@ -58,7 +58,10 @@ export const espaco = {
   heroi: 48,
 } as const;
 
-export const raio = { pequeno: 8, medio: 12, grande: 16, cartao: 20, pilula: 999 } as const;
+// Escala mais generosa a pedido do dono. Cantos maiores lêem como mais
+// caros — e' o que separa app de formulario. Multiplos de 4, e nunca
+// mais de tres raios numa tela.
+export const raio = { pequeno: 12, medio: 16, grande: 20, cartao: 24, pilula: 999 } as const;
 
 // 🚨 Alvo de toque minimo da Apple. E' requisito, nao sugestao.
 export const TOQUE = 44;

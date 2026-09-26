@@ -139,7 +139,7 @@ const criarEstilos = (c: Paleta, ac: string) => StyleSheet.create({
   fundo: { backgroundColor: 'rgba(0,0,0,0.5)' },
   folha: {
     backgroundColor: c.white,
-    borderTopLeftRadius: 22, borderTopRightRadius: 22,
+    borderTopLeftRadius: 28, borderTopRightRadius: 28,
     paddingBottom: 34, paddingHorizontal: 8,
     maxHeight: SCREEN_H * 0.8,
   },
@@ -160,7 +160,7 @@ const criarEstilos = (c: Paleta, ac: string) => StyleSheet.create({
   // 🚨 56 de altura: a Apple pede 44pt de alvo e a linha anterior nao chegava la'.
   linha: {
     minHeight: 56, flexDirection: 'row', alignItems: 'center',
-    paddingRight: 12, borderRadius: 14, gap: 10,
+    paddingRight: 12, borderRadius: 16, gap: 10,
   },
   linhaTocada: { backgroundColor: c.cloud },
   linhaCorpo: { flex: 1, minWidth: 0 },
