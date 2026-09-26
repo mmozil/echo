@@ -15,7 +15,7 @@ import Svg, { Path } from 'react-native-svg';
 import { Player } from '@/components/PlayerBar';
 import { Folha, LinhaFolha } from '@/components/Folha';
 import { Toque } from '@/components/Toque';
-import { tipo, espaco, raio } from '@/lib/theme';
+import { tipo, espaco, raio, useTema, type Paleta } from '@/lib/theme';
 import {
   ensurePlayerSetup, loadAndPlay, play as tpPlay, pause as tpPause,
   jumpBy, seekTo as tpSeek, setRate as tpSetRate, definirAvanco,
@@ -46,6 +46,8 @@ const norm = (s: string) =>
 const clamp = (n: number, min: number, max: number) => Math.max(min, Math.min(max, n));
 
 export default function Reader() {
+  const c = useTema();
+  const styles = useMemo(() => criarEstilos(c), [c]);
   const { id } = useLocalSearchParams<{ id: string }>();
   const docId = String(id);
   const insets = useSafeAreaInsets();
@@ -343,7 +345,7 @@ export default function Reader() {
   if (isLoading || !data) {
     return (
       <View style={[styles.fill, styles.center]}>
-        <ActivityIndicator color={colors.ink} />
+        <ActivityIndicator color={c.ink} />
       </View>
     );
   }
@@ -545,6 +547,8 @@ const PdfPage = memo(function PdfPage({ docId, page, words, isActive, boundaries
   boundaries: Boundary[]; activeBIdx: number;
   onPress: (relX: number, relY: number) => void;
 }) {
+  const c = useTema();
+  const styles = useMemo(() => criarEstilos(c), [c]);
   let pathD = '';
   if (isActive && words?.length && activeBIdx >= 0 && boundaries.length) {
     const ratio = activeBIdx / boundaries.length;
@@ -555,6 +559,8 @@ const PdfPage = memo(function PdfPage({ docId, page, words, isActive, boundaries
 
   return (
     <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`Página ${page}. Toque numa palavra para ouvir a partir dela.`}
       onPress={(e) => {
         const relX = e.nativeEvent.locationX / SCREEN_W;
         const relY = e.nativeEvent.locationY / PAGE_HEIGHT;
@@ -580,7 +586,7 @@ const PdfPage = memo(function PdfPage({ docId, page, words, isActive, boundaries
           style={StyleSheet.absoluteFill}
           pointerEvents="none"
         >
-          <Path d={pathD} fill={colors.hlSentence} />
+          <Path d={pathD} fill={c.hlSentence} />
         </Svg>
       ) : null}
     </Pressable>
@@ -594,6 +600,8 @@ function TextView({ docId, chunks, chunkIdx, boundaries, activeBIdx, onPlayChunk
   onPlayChunk: (idx: number) => void;
   bottomPadding: number;
 }) {
+  const c = useTema();
+  const styles = useMemo(() => criarEstilos(c), [c]);
   const scrollRef = useRef<ScrollView>(null);
   const offsetsRef = useRef<Record<number, number>>({});
 
@@ -612,20 +620,24 @@ function TextView({ docId, chunks, chunkIdx, boundaries, activeBIdx, onPlayChunk
       contentContainerStyle={[styles.textWrap, { paddingBottom: bottomPadding }]}
       showsVerticalScrollIndicator={false}
     >
-      {chunks.map((c) => {
-        const isActive = c.index === chunkIdx;
+      {chunks.map((tr) => {
+        const isActive = tr.index === chunkIdx;
         return (
           <Pressable
-            key={c.index}
-            onPress={() => onPlayChunk(c.index)}
-            onLayout={(e) => { offsetsRef.current[c.index] = e.nativeEvent.layout.y; }}
+            accessibilityRole="button"
+            accessibilityLabel="Ouvir a partir deste trecho"
+            key={tr.index}
+            onPress={() => onPlayChunk(tr.index)}
+            onLayout={(e) => { offsetsRef.current[tr.index] = e.nativeEvent.layout.y; }}
             style={styles.textChunk}
           >
-            <Text style={[
+            {/* 🚨 «Make useful text selectable» — num leitor, copiar um
+                trecho e' basico, e nao dava. */}
+            <Text selectable style={[
               styles.textBody,
               isActive && styles.textBodyActive,
             ]}>
-              {c.text}
+              {tr.text}
             </Text>
           </Pressable>
         );
@@ -636,8 +648,9 @@ function TextView({ docId, chunks, chunkIdx, boundaries, activeBIdx, onPlayChunk
 
 // ===== Player =====
 function Chevron() {
+  const c = useTema();
   return (
-    <Svg width={26} height={26} viewBox="0 0 24 24" fill="none" stroke={colors.ink}
+    <Svg width={26} height={26} viewBox="0 0 24 24" fill="none" stroke={c.ink}
       strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">
       <Path d="M15 5l-7 7 7 7" />
     </Svg>
@@ -645,34 +658,35 @@ function Chevron() {
 }
 
 function IconeLista({ ativo }: { ativo: boolean }) {
-  const c = ativo ? colors.ink : colors.mist;
+  const c = useTema();
+  const tom = ativo ? c.ink : c.mist;
   return (
-    <Svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke={c}
+    <Svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke={tom}
       strokeWidth={1.9} strokeLinecap="round">
       <Path d="M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01" />
     </Svg>
   );
 }
 
-const styles = StyleSheet.create({
-  fill: { flex: 1, backgroundColor: colors.snow },
+const criarEstilos = (c: Paleta) => StyleSheet.create({
+  fill: { flex: 1, backgroundColor: c.snow },
   center: { alignItems: 'center', justifyContent: 'center' },
 
   navBar: {
     flexDirection: 'row', alignItems: 'center',
     paddingHorizontal: espaco.pequeno, paddingVertical: espaco.micro,
-    backgroundColor: colors.white,
+    backgroundColor: c.white,
     gap: espaco.pequeno,
   },
   navBotao: { width: 44, height: 44 },
   navCentro: { flex: 1, minWidth: 0, alignItems: 'center' },
-  navTitulo: { ...tipo.destaque, color: colors.ink, textAlign: 'center' },
-  navSub: { ...tipo.legenda, color: colors.slate, textAlign: 'center', marginTop: 1 },
+  navTitulo: { ...tipo.destaque, color: c.ink, textAlign: 'center' },
+  navSub: { ...tipo.legenda, color: c.slate, textAlign: 'center', marginTop: 1 },
 
   segmentado: {
     flexDirection: 'row',
     marginHorizontal: espaco.padrao, marginBottom: espaco.pequeno,
-    backgroundColor: colors.cloud,
+    backgroundColor: c.cloud,
     borderRadius: raio.pequeno, padding: 2, gap: 2,
     borderBottomWidth: 0,
   },
@@ -681,24 +695,24 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   segmentoAtivo: {
-    backgroundColor: colors.white,
+    backgroundColor: c.white,
     shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1, shadowRadius: 3, elevation: 2,
   },
-  segmentoTexto: { ...tipo.subtitulo, fontWeight: '600', color: colors.slate },
-  segmentoTextoAtivo: { color: colors.ink },
+  segmentoTexto: { ...tipo.subtitulo, fontWeight: '600', color: c.slate },
+  segmentoTextoAtivo: { color: c.ink },
 
   pageWrap: { marginVertical: 4 },
-  pageImg: { width: SCREEN_W, height: PAGE_HEIGHT, backgroundColor: 'white' },
+  pageImg: { width: SCREEN_W, height: PAGE_HEIGHT, backgroundColor: c.white },
 
   textWrap: { padding: 24, paddingBottom: 40 },
   textChunk: { marginBottom: 18 },
   textBody: {
     fontSize: 17, lineHeight: 26,
-    color: colors.charcoal,
+    color: c.charcoal,
     fontFamily: fonts.body,
   },
-  textBodyActive: { backgroundColor: colors.highlight, color: colors.ink },
+  textBodyActive: { backgroundColor: c.highlight, color: c.ink },
 
   playerFloat: {
     position: 'absolute',
@@ -713,5 +727,5 @@ const styles = StyleSheet.create({
   // Sheet de velocidade
 
   // TOC sheet
-  tocEmpty: { ...tipo.chamada, color: colors.slate, textAlign: 'center', paddingVertical: espaco.ar },
+  tocEmpty: { ...tipo.chamada, color: c.slate, textAlign: 'center', paddingVertical: espaco.ar },
 });

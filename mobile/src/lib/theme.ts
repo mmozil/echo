@@ -63,3 +63,53 @@ export const raio = { pequeno: 8, medio: 12, grande: 16, cartao: 20, pilula: 999
 // 🚨 Alvo de toque minimo da Apple. E' requisito, nao sugestao.
 export const TOQUE = 44;
 export const FOLGA = { top: 10, bottom: 10, left: 10, right: 10 } as const;
+
+// ── Acento em dois tons, por CONTRASTE medido ─────────────────────────────
+// 🚨 O `#8C9CFF` da' **2,44:1** sobre o fundo claro — falha para texto (4,5:1)
+//    e falha ate' como elemento de interface (3:1). Eu proprio o usei em
+//    «Continuar ouvindo» e na linha ativa das folhas: era texto ilegivel.
+//    O tom claro abaixo mantem o MESMO matiz (231,7 graus), so' escurece —
+//    sobe para 4,68:1. Sobre o escuro o original ja' da' 7,28:1 e fica.
+export const acento = {
+  sobreClaro: '#455FFF',  // texto, icone e barra em fundo claro
+  sobreEscuro: '#8C9CFF', // dentro do player e das superficies escuras
+} as const;
+
+// ── Modo escuro ───────────────────────────────────────────────────────────
+// «Make sure all your app's colors work well in light, dark, and increased
+// contrast contexts.» — o app era claro em toda tela, e ele e' um LEITOR:
+// usado na cama, no escuro, com a tela toda branca na cara de quem le'.
+//
+// Tons pela escada de elevacao da Apple, todos com contraste CALCULADO:
+//   fundo #000 -> cartao #1C1C1E (separacao 1,234) -> elevado #2C2C2E (1,221)
+//   texto  #FFF 17,01:1 · secundario #A1A1A6 6,61:1 · terciario #8E8E93 5,22:1
+// 🚨 O #6E6E73 que a nossa skill sugeria para terciario da' **3,36:1** — passa
+//    so' como texto grande. Ficou de fora.
+import { useColorScheme } from 'react-native';
+
+export type Paleta = typeof colors;
+
+export const paletaEscura: Paleta = {
+  ...colors,
+  ink: '#FFFFFF',
+  charcoal: '#E5E5E7',
+  slate: '#A1A1A6',
+  mist: '#8E8E93',
+  cloud: '#2C2C2E',
+  snow: '#000000',
+  white: '#1C1C1E',
+  border: '#38383A',
+  accent: '#FFFFFF',
+  accentLight: '#2C2C2E',
+  highlight: '#39406F',
+  highlightSpoken: '#3A3A3C',
+};
+
+export function useTema(): Paleta {
+  return useColorScheme() === 'dark' ? paletaEscura : colors;
+}
+
+/** O acento certo para o esquema em uso. */
+export function useAcento(): string {
+  return useColorScheme() === 'dark' ? acento.sobreEscuro : acento.sobreClaro;
+}

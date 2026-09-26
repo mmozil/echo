@@ -20,16 +20,18 @@ import Animated, {
   withSpring, withTiming,
 } from 'react-native-reanimated';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
-import { BlurView } from 'expo-blur';
+import { Vidro } from './Vidro';
 import { Image } from 'expo-image';
 import Svg, { Path } from 'react-native-svg';
-import { colors, tipo, espaco } from '@/lib/theme';
-import { Folha, LinhaFolha, ACENTO } from './Folha';
+import { colors, tipo, espaco, acento } from '@/lib/theme';
+import { useMovimentoReduzido, anima } from '@/lib/movimento';
+import { Folha, LinhaFolha } from './Folha';
+// 🚨 O player e' escuro: 7,28:1 com o tom original. Nao herdar o da folha.
+const ACENTO = acento.sobreEscuro;
 import { coverUrl } from '@/lib/api';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
-const SUPERFICIE = 'rgba(20, 20, 22, 0.72)';
 const SUPERFICIE_CHEIA = '#141416';
 
 // Mola unica para tudo que e' resposta a dedo: firme, sem balancar.
@@ -59,16 +61,19 @@ function Botao({ children, onPress, style, disabled, escala = 0.88, hitSlop = 8 
   children: React.ReactNode; onPress: () => void; style?: any;
   disabled?: boolean; escala?: number; hitSlop?: number;
 }) {
+  const reduzido = useMovimentoReduzido();
+  const alvo = reduzido ? 1 - (1 - escala) * 0.35 : escala;
   const k = useSharedValue(1);
   const anim = useAnimatedStyle(() => ({ transform: [{ scale: k.value }] }));
   return (
     <Animated.View style={[style, anim]}>
       <Pressable
-        onPressIn={() => { k.value = withSpring(escala, MOLA); }}
-        onPressOut={() => { k.value = withSpring(1, MOLA); }}
+        onPressIn={() => { k.value = anima(alvo, MOLA, reduzido); }}
+        onPressOut={() => { k.value = anima(1, MOLA, reduzido); }}
         onPress={onPress}
         disabled={disabled}
         hitSlop={hitSlop}
+        accessibilityRole="button"
         style={estilos.botaoInterior}
       >
         {children}
@@ -204,7 +209,11 @@ export function Player(p: {
   return (
     <>
       <GestureDetector gesture={puxar}>
-        <BlurView intensity={45} tint="dark" style={estilos.pilula}>
+        <Vidro style={estilos.pilula} variante="regular" escuro>
+          {/* 🚨 «Make custom gestures easy to learn» — puxar a pilula para cima
+              abre o «Tocando agora», e gesto invisivel nao se aprende. Esta
+              alca e' a unica coisa que ensina. */}
+          <View style={estilos.alca} />
           <Barra
             pct={p.pct}
             largura={SCREEN_W - 24}
@@ -214,9 +223,12 @@ export function Player(p: {
           />
 
           <View style={estilos.linhaPrincipal}>
-            <Pressable onPress={() => setGrandeAberto(true)} hitSlop={4}>{capa}</Pressable>
+            <Pressable onPress={() => setGrandeAberto(true)} hitSlop={4}
+              accessibilityRole="button" accessibilityLabel="Abrir Tocando agora">{capa}</Pressable>
 
-            <Pressable style={estilos.colunaInfo} onPress={() => setGrandeAberto(true)} hitSlop={4}>
+            <Pressable style={estilos.colunaInfo} onPress={() => setGrandeAberto(true)} hitSlop={4}
+              accessibilityRole="button"
+              accessibilityLabel={`${p.chapter}. Página ${p.page} de ${p.totalPages}. Abrir Tocando agora.`}>
               <Text numberOfLines={1} style={estilos.capitulo}>{p.chapter}</Text>
               <Text numberOfLines={1} style={estilos.meta}>
                 {fmt(p.elapsed)} · pág {p.page}/{p.totalPages} · {fmt(p.total)}
@@ -236,7 +248,7 @@ export function Player(p: {
               <IconePular dir="fwd" /><Text style={estilos.pularNum}>10</Text>
             </Botao>
           </View>
-        </BlurView>
+        </Vidro>
       </GestureDetector>
 
       <PlayerGrande
@@ -281,17 +293,18 @@ export function Player(p: {
 //    de toque do play tem 44pt e divide a linha com mais seis coisas. Aqui o
 //    play tem 76 e a barra ocupa a largura da tela.
 function PlayerGrande(p: any) {
+  const reduzido = useMovimentoReduzido();
   const y = useSharedValue(SCREEN_H);
 
   useEffect(() => {
-    y.value = p.aberto ? withSpring(0, MOLA_PAINEL) : withTiming(SCREEN_H, { duration: 200 });
-  }, [p.aberto, y]);
+    y.value = p.aberto ? anima(0, MOLA_PAINEL, reduzido) : withTiming(SCREEN_H, { duration: reduzido ? 130 : 200 });
+  }, [p.aberto, y, reduzido]);
 
   const pan = Gesture.Pan()
     .onUpdate((e) => { y.value = Math.max(0, e.translationY); })
     .onEnd((e) => {
       if (e.translationY > 120 || e.velocityY > 900) runOnJS(p.aoFechar)();
-      else y.value = withSpring(0, MOLA_PAINEL);
+      else y.value = anima(0, MOLA_PAINEL, reduzido);
     });
 
   const anim = useAnimatedStyle(() => ({ transform: [{ translateY: y.value }] }));
@@ -310,7 +323,8 @@ function PlayerGrande(p: any) {
 
           <View style={estilos.grandeTexto}>
             <Text numberOfLines={2} style={estilos.grandeTitulo}>{p.titulo}</Text>
-            <Pressable onPress={() => { p.aoFechar(); p.onChapterPress(); }} hitSlop={8}>
+            <Pressable onPress={() => { p.aoFechar(); p.onChapterPress(); }} hitSlop={8}
+              accessibilityRole="button" accessibilityLabel="Ver capítulos">
               <Text numberOfLines={1} style={estilos.grandeCapitulo}>{p.chapter}</Text>
             </Pressable>
           </View>
@@ -342,11 +356,13 @@ function PlayerGrande(p: any) {
           </View>
 
           <View style={estilos.grandeRodape}>
-            <Pressable onPress={p.abrirVoz} style={estilos.grandePastilha}>
+            <Pressable onPress={p.abrirVoz} style={estilos.grandePastilha}
+              accessibilityRole="button" accessibilityLabel={`Voz: ${p.rotuloVoz}. Toque para trocar.`}>
               <Text style={estilos.grandePastilhaRotulo}>Voz</Text>
               <Text numberOfLines={1} style={estilos.grandePastilhaValor}>{p.rotuloVoz}</Text>
             </Pressable>
-            <Pressable onPress={p.abrirVel} style={estilos.grandePastilha}>
+            <Pressable onPress={p.abrirVel} style={estilos.grandePastilha}
+              accessibilityRole="button" accessibilityLabel={`Velocidade: ${p.rotuloVel}. Toque para trocar.`}>
               <Text style={estilos.grandePastilhaRotulo}>Velocidade</Text>
               <Text style={estilos.grandePastilhaValor}>{p.rotuloVel}</Text>
             </Pressable>
@@ -396,7 +412,9 @@ const estilos = StyleSheet.create({
 
   // pilula
   pilula: {
-    backgroundColor: SUPERFICIE,
+    // 🚨 SEM `backgroundColor` aqui: no caminho do Liquid Glass quem pinta e'
+    //    o iOS, e uma cor por cima cobriria o material. O recuo para
+    //    `expo-blur` poe a sua propria cor la' dentro do `Vidro`.
     borderRadius: 20,
     overflow: 'hidden',
     borderWidth: 0.5,
@@ -407,6 +425,8 @@ const estilos = StyleSheet.create({
     shadowRadius: 20,
     elevation: 12,
   },
+  alca: { alignSelf: 'center', width: 34, height: 4, borderRadius: 2,
+    backgroundColor: 'rgba(255,255,255,0.32)', marginTop: 7, marginBottom: 1 },
   linhaPrincipal: { flexDirection: 'row', alignItems: 'center', paddingVertical: 11, paddingHorizontal: 12, gap: 10 },
   capa: { width: 40, height: 40, borderRadius: 8, backgroundColor: 'rgba(255,255,255,0.08)' },
   capaVazia: { alignItems: 'center', justifyContent: 'center' },

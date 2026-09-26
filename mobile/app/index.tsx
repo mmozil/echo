@@ -14,7 +14,7 @@
 //   bate sem querer, e saia sem perguntar. Agora confirma.
 // · «Always include a press state for a custom button» — o cartao respondia
 //   com `opacity`, que nao lê como toque. Agora e' mola na escala.
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator, Alert, FlatList, RefreshControl, StyleSheet, Text, View,
 } from 'react-native';
@@ -24,12 +24,14 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { router } from 'expo-router';
 import Svg, { Path } from 'react-native-svg';
 import { coverUrl, listDocuments, logout, initAuthToken, type DocSummary } from '@/lib/api';
-import { colors, tipo, espaco, raio } from '@/lib/theme';
+import { tipo, espaco, raio, useTema, useAcento, type Paleta } from '@/lib/theme';
 import { Toque, Progresso } from '@/components/Toque';
 
-const ACENTO = '#8C9CFF';
 
 export default function Biblioteca() {
+  const c = useTema();
+  const ACENTO_ = useAcento();
+  const estilos = useMemo(() => criarEstilos(c, ACENTO_), [c, ACENTO_]);
   const qc = useQueryClient();
   const [atualizando, setAtualizando] = useState(false);
   const [autenticado, setAutenticado] = useState(false);
@@ -55,6 +57,11 @@ export default function Biblioteca() {
     if ((error as any)?.response?.status === 401) router.replace('/login');
   }, [error]);
 
+  // 401 leva ao login; qualquer outro erro PRECISA aparecer. Antes ficava so'
+  // no console e a tela mostrava «Sua biblioteca está vazia» — a leitura de
+  // quem esta' do outro lado e' «perdi meus livros», nao «a rede caiu».
+  const erroDeRede = !!error && (error as any)?.response?.status !== 401;
+
   async function atualizar() {
     setAtualizando(true);
     await qc.invalidateQueries({ queryKey: ['documents'] });
@@ -74,7 +81,7 @@ export default function Biblioteca() {
   }
 
   if (!autenticado) {
-    return <View style={[estilos.tela, estilos.centro]}><ActivityIndicator color={colors.ink} /></View>;
+    return <View style={[estilos.tela, estilos.centro]}><ActivityIndicator color={c.ink} /></View>;
   }
 
   // Em andamento = tem progresso e nao terminou. O mais recente abre a tela.
@@ -96,7 +103,7 @@ export default function Biblioteca() {
         contentContainerStyle={estilos.conteudo}
         showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl refreshing={atualizando} onRefresh={atualizar} tintColor={colors.mist} />
+          <RefreshControl refreshing={atualizando} onRefresh={atualizar} tintColor={c.mist} />
         }
         ListHeaderComponent={
           <View>
@@ -107,9 +114,7 @@ export default function Biblioteca() {
               </Toque>
             </View>
 
-            {isLoading && !docs ? (
-              <View style={estilos.carregando}><ActivityIndicator color={colors.mist} /></View>
-            ) : null}
+            {isLoading && !docs ? <Esqueleto /> : null}
 
             {retomar ? (
               <View style={estilos.secao}>
@@ -126,7 +131,17 @@ export default function Biblioteca() {
           </View>
         }
         ListEmptyComponent={
-          !isLoading && !retomar ? (
+          erroDeRede ? (
+            <View style={estilos.vazio}>
+              <Text style={estilos.vazioTitulo}>Não consegui carregar</Text>
+              <Text style={estilos.vazioTexto}>
+                Seus livros estão salvos no servidor — só a conexão falhou agora.
+              </Text>
+              <Toque rotulo="Tentar de novo" onPress={atualizar} style={estilos.vazioBotao} alvoMinimo={false}>
+                <Text style={estilos.vazioBotaoTexto}>Tentar de novo</Text>
+              </Toque>
+            </View>
+          ) : !isLoading && !retomar ? (
             <View style={estilos.vazio}>
               <Text style={estilos.vazioTitulo}>Sua biblioteca está vazia</Text>
               <Text style={estilos.vazioTexto}>
@@ -144,8 +159,35 @@ export default function Biblioteca() {
   );
 }
 
+// ── Espera ────────────────────────────────────────────────────────────────
+// 🚨 «Show something as soon as possible» — a roda girando faz a tela parecer
+//    quebrada. A forma do conteudo diz «esta' vindo, e vem assim».
+function Esqueleto() {
+  const c = useTema();
+  const ACENTO_ = useAcento();
+  const estilos = useMemo(() => criarEstilos(c, ACENTO_), [c, ACENTO_]);
+  return (
+    <View accessibilityLabel="Carregando sua biblioteca">
+      <View style={[estilos.osso, { height: 96, borderRadius: raio.grande, marginBottom: espaco.ar }]} />
+      <View style={[estilos.osso, { height: 20, width: 130, marginBottom: espaco.medio }]} />
+      <View style={estilos.esqueletoGrade}>
+        {[0, 1].map(i => (
+          <View key={i} style={estilos.esqueletoCartao}>
+            <View style={[estilos.osso, { aspectRatio: 0.72, borderRadius: raio.pequeno }]} />
+            <View style={[estilos.osso, { height: 14, marginTop: espaco.pequeno }]} />
+            <View style={[estilos.osso, { height: 11, width: '55%', marginTop: espaco.micro }]} />
+          </View>
+        ))}
+      </View>
+    </View>
+  );
+}
+
 // ── O que esta' sendo lido agora ──────────────────────────────────────────
 function CartaoRetomar({ item, onPress }: { item: DocSummary; onPress: () => void }) {
+  const c = useTema();
+  const ACENTO_ = useAcento();
+  const estilos = useMemo(() => criarEstilos(c, ACENTO_), [c, ACENTO_]);
   const [semCapa, setSemCapa] = useState(false);
   const f = (item.current_chunk ?? 0) / Math.max(1, (item.total_chunks ?? 1) - 1);
   const pct = Math.round(f * 100);
@@ -154,7 +196,6 @@ function CartaoRetomar({ item, onPress }: { item: DocSummary; onPress: () => voi
     <Toque
       rotulo={`Continuar ${item.title}, ${pct} por cento lido`}
       onPress={onPress}
-      vibrar
       escala={0.98}
       alvoMinimo={false}
       style={estilos.retomar}
@@ -180,7 +221,7 @@ function CartaoRetomar({ item, onPress }: { item: DocSummary; onPress: () => voi
           <Text numberOfLines={2} style={estilos.retomarTitulo}>{item.title}</Text>
           <Text style={estilos.retomarMeta}>{pct}% lido · {item.total_pages} páginas</Text>
           <View style={estilos.retomarBarra}>
-            <Progresso fracao={f} cor={ACENTO} fundo={colors.border} altura={4} />
+            <Progresso fracao={f} cor={ACENTO_} fundo={c.border} altura={4} />
           </View>
           <Text style={estilos.retomarAcao}>Continuar ouvindo</Text>
         </View>
@@ -191,6 +232,9 @@ function CartaoRetomar({ item, onPress }: { item: DocSummary; onPress: () => voi
 
 // ── Cartao da grade ───────────────────────────────────────────────────────
 function CartaoLivro({ item, onPress }: { item: DocSummary; onPress: () => void }) {
+  const c = useTema();
+  const ACENTO_ = useAcento();
+  const estilos = useMemo(() => criarEstilos(c, ACENTO_), [c, ACENTO_]);
   const [semCapa, setSemCapa] = useState(false);
   const f = (item.current_chunk ?? 0) / Math.max(1, (item.total_chunks ?? 1) - 1);
   const comecou = (item.current_chunk ?? 0) > 0;
@@ -199,7 +243,6 @@ function CartaoLivro({ item, onPress }: { item: DocSummary; onPress: () => void 
     <Toque
       rotulo={comecou ? `${item.title}, ${Math.round(f * 100)} por cento lido` : item.title}
       onPress={onPress}
-      vibrar
       escala={0.97}
       alvoMinimo={false}
       style={estilos.cartao}
@@ -221,7 +264,7 @@ function CartaoLivro({ item, onPress }: { item: DocSummary; onPress: () => void 
           )}
           {comecou ? (
             <View style={estilos.capaBarra}>
-              <Progresso fracao={f} cor={ACENTO} fundo="rgba(255,255,255,0.28)" altura={3} />
+              <Progresso fracao={f} cor={ACENTO_} fundo="rgba(255,255,255,0.28)" altura={3} />
             </View>
           ) : null}
         </View>
@@ -235,8 +278,9 @@ function CartaoLivro({ item, onPress }: { item: DocSummary; onPress: () => void 
 }
 
 function IconeSair() {
+  const c = useTema();
   return (
-    <Svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke={colors.slate}
+    <Svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke={c.slate}
       strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
       <Path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
       <Path d="M16 17l5-5-5-5M21 12H9" />
@@ -244,8 +288,8 @@ function IconeSair() {
   );
 }
 
-const estilos = StyleSheet.create({
-  tela: { flex: 1, backgroundColor: colors.snow },
+const criarEstilos = (c: Paleta, ac: string) => StyleSheet.create({
+  tela: { flex: 1, backgroundColor: c.snow },
   centro: { alignItems: 'center', justifyContent: 'center' },
   conteudo: { paddingHorizontal: espaco.padrao, paddingBottom: espaco.heroi, gap: espaco.padrao },
 
@@ -253,18 +297,20 @@ const estilos = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingTop: espaco.pequeno, paddingBottom: espaco.padrao,
   },
-  tituloGrande: { ...tipo.tituloGrande, color: colors.ink },
+  tituloGrande: { ...tipo.tituloGrande, color: c.ink },
   sairBotao: { width: 44, height: 44, alignItems: 'flex-end', justifyContent: 'center' },
 
-  carregando: { paddingVertical: espaco.secao, alignItems: 'center' },
+  osso: { backgroundColor: c.cloud, borderRadius: raio.pequeno, width: '100%' },
+  esqueletoGrade: { flexDirection: 'row', gap: espaco.padrao },
+  esqueletoCartao: { flex: 1 },
 
   secao: { marginBottom: espaco.ar },
-  secaoTitulo: { ...tipo.destaque, color: colors.ink, marginBottom: espaco.medio },
+  secaoTitulo: { ...tipo.destaque, color: c.ink, marginBottom: espaco.medio },
   secaoTituloGrade: { marginTop: espaco.pequeno, marginBottom: espaco.medio },
 
   // continuar
   retomar: {
-    backgroundColor: colors.white,
+    backgroundColor: c.white,
     borderRadius: raio.grande,
     padding: espaco.medio,
     shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
@@ -273,37 +319,37 @@ const estilos = StyleSheet.create({
   retomarLinha: { flexDirection: 'row', gap: espaco.medio, width: '100%' },
   retomarCapa: {
     width: 76, aspectRatio: 0.72, borderRadius: raio.pequeno, overflow: 'hidden',
-    backgroundColor: colors.charcoal,
+    backgroundColor: c.charcoal,
   },
   retomarCorpo: { flex: 1, minWidth: 0, justifyContent: 'center' },
-  retomarTitulo: { ...tipo.destaque, color: colors.ink },
-  retomarMeta: { ...tipo.nota, color: colors.slate, marginTop: espaco.micro },
+  retomarTitulo: { ...tipo.destaque, color: c.ink },
+  retomarMeta: { ...tipo.nota, color: c.slate, marginTop: espaco.micro },
   retomarBarra: { marginTop: espaco.pequeno, marginBottom: espaco.pequeno },
-  retomarAcao: { ...tipo.nota, fontWeight: '600', color: ACENTO },
+  retomarAcao: { ...tipo.nota, fontWeight: '600', color: ac },
 
   // grade
   cartao: { flex: 1 },
   cartaoInterior: { width: '100%' },
   capa: {
     aspectRatio: 0.72, borderRadius: raio.pequeno, overflow: 'hidden',
-    backgroundColor: colors.charcoal, marginBottom: espaco.pequeno,
+    backgroundColor: c.charcoal, marginBottom: espaco.pequeno,
     shadowColor: '#000', shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.12, shadowRadius: 12, elevation: 4,
   },
   capaImagem: { width: '100%', height: '100%' },
-  capaVazia: { flex: 1, backgroundColor: colors.charcoal, padding: espaco.medio, justifyContent: 'flex-end' },
+  capaVazia: { flex: 1, backgroundColor: c.charcoal, padding: espaco.medio, justifyContent: 'flex-end' },
   capaVaziaTexto: { ...tipo.nota, fontWeight: '700', color: 'white' },
   capaBarra: { position: 'absolute', left: espaco.pequeno, right: espaco.pequeno, bottom: espaco.pequeno },
-  cartaoTitulo: { ...tipo.subtitulo, fontWeight: '600', color: colors.ink },
-  cartaoMeta: { ...tipo.nota, color: colors.slate, marginTop: 2 },
+  cartaoTitulo: { ...tipo.subtitulo, fontWeight: '600', color: c.ink },
+  cartaoMeta: { ...tipo.nota, color: c.slate, marginTop: 2 },
 
   // vazio
   vazio: { alignItems: 'center', paddingTop: espaco.heroi, paddingHorizontal: espaco.ar, gap: espaco.medio },
-  vazioTitulo: { ...tipo.titulo3, color: colors.ink, textAlign: 'center' },
-  vazioTexto: { ...tipo.chamada, color: colors.slate, textAlign: 'center' },
+  vazioTitulo: { ...tipo.titulo3, color: c.ink, textAlign: 'center' },
+  vazioTexto: { ...tipo.chamada, color: c.slate, textAlign: 'center' },
   vazioBotao: {
     marginTop: espaco.pequeno, minHeight: 48, paddingHorizontal: espaco.ar,
-    borderRadius: raio.pilula, backgroundColor: colors.ink, justifyContent: 'center',
+    borderRadius: raio.pilula, backgroundColor: c.ink, justifyContent: 'center',
   },
-  vazioBotaoTexto: { ...tipo.destaque, color: colors.white },
+  vazioBotaoTexto: { ...tipo.destaque, color: c.white },
 });

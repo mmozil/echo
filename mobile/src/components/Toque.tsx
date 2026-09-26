@@ -6,9 +6,10 @@
 //    as important as size». `opacity` no press nao lê como resposta fisica — o
 //    que lê e' a escala, e ela roda no thread da UI, entao nao engasga.
 import { Pressable, StyleSheet, View } from 'react-native';
-import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
+import Animated, { useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import { TOQUE, FOLGA } from '@/lib/theme';
+import { useMovimentoReduzido, anima } from '@/lib/movimento';
 
 const MOLA = { damping: 18, stiffness: 220, mass: 0.6 } as const;
 
@@ -26,14 +27,18 @@ export function Toque({
   dica?: string;
   alvoMinimo?: boolean;
 }) {
+  const reduzido = useMovimentoReduzido();
+  // 🚨 Com movimento reduzido a escala nao some — encolhe menos. Zerar o
+  //    retorno do toque seria tirar a resposta, nao o incomodo.
+  const alvo = reduzido ? 1 - (1 - escala) * 0.35 : escala;
   const k = useSharedValue(1);
   const anim = useAnimatedStyle(() => ({ transform: [{ scale: k.value }] }));
 
   return (
     <Animated.View style={[anim, style]}>
       <Pressable
-        onPressIn={() => { k.value = withSpring(escala, MOLA); }}
-        onPressOut={() => { k.value = withSpring(1, MOLA); }}
+        onPressIn={() => { k.value = anima(alvo, MOLA, reduzido); }}
+        onPressOut={() => { k.value = anima(1, MOLA, reduzido); }}
         onPress={() => {
           if (vibrar) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
           onPress();
