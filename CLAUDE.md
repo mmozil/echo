@@ -51,7 +51,7 @@ Echo/
 ├── src/
 │   ├── database.py      # SQLite (users, sessions, documents, chunks, progress)
 │   ├── pdf_parser.py    # PyMuPDF — extração, chunking, cover, pages, TOC, words
-│   └── tts_service.py   # Edge TTS (AntonioNeural, cache MP3, word boundaries)
+│   └── tts_service.py   # Edge TTS (cache MP3, word boundaries, trecho em pedaços paralelos) + Kokoro
 ├── static/
 │   ├── index.html       # App (biblioteca + reader + player + settings)
 │   ├── login.html       # Login (token-based)
@@ -183,7 +183,7 @@ zero, custo zero, sem chave.
 
 | | edge-tts | Kokoro (Dora) |
 |---|---|---|
-| trecho de ~1.000 caracteres | **~4 s** | 12–20 s |
+| trecho de ~1.000 caracteres | **~4 s** (até 21/10/2026 — ver abaixo) | 12–20 s |
 | marcação de palavra | aproximada | **1 para 1, exata** |
 
 - 🚨 **A marcação do Kokoro é MELHOR.** `/dev/captioned_speech` devolve uma
@@ -207,6 +207,33 @@ zero, custo zero, sem chave.
 - Env no Coolify: `KOKORO_URL=http://kokoro-tts:8880` (criada nas duas faces,
   produção e preview — o Coolify limpa o `.env` a cada deploy).
 - Medição completa: [memory/reference_kokoro_para_o_echo_20260923.md].
+- 🚨 **O `kokoro-tts` está PARADO desde 08/10/2026** (decisão do dono, para
+  liberar memória do servidor), mas a `KOKORO_URL` continua no Coolify — então
+  a Dora **aparece na lista e falha** a cada trecho. Religar:
+  `docker update --restart unless-stopped kokoro-tts && docker start kokoro-tts`.
+  Ou tirar a env, e a Dora some da tela. ⏸️ Decisão do dono.
+
+#### A voz parou em 22/10/2026 — duas causas, as duas corrigidas
+
+1. **403 da Microsoft** no `wss://speech.platform.bing.com` para a `edge-tts`
+   7.2.8: todo play dava 500. Já tinha acontecido com a 7.0.2 (`8d79b6e`). A
+   correção é sempre **subir o pino** para a versão mais nova do PyPI → **7.3.1**
+   (`11a6015`). Último áudio bom antes disso: 18/10.
+2. **Lentidão por conexão.** Com a 7.3.1 a Microsoft serve cada conexão quase
+   em tempo real. Mesmo trecho de 1.989 caracteres (~2 min de fala): **Thalita
+   86 s · Antônio 17 s · Francisca 8 s**. O prazo era 45 s, então todo trecho
+   da Thalita falhava e o botão de play ficava girando. Correção (`5a4cd30`):
+   o trecho é falado **em pedaços de frase de até 500 caracteres, até 4 em
+   paralelo**, e emendado — Thalita **86 s → 22,6 s**. O MP3 do Edge é CBR de
+   48 kbps (6.000 bytes/s), então a duração de cada pedaço sai exata do tamanho
+   e desloca as marcações de palavra dos seguintes. Cada pedaço começa num
+   quadro MP3 (`fff3`), sem estalo na emenda. Prazo 45 → 90 s.
+   Ajustes por env: `TTS_PEDACO_CHARS`, `TTS_PEDACOS_SIMULTANEOS`, `TTS_TIMEOUT_S`.
+- 🚨 **Sintoma de cada uma**: 403 → erro 500 imediato no `POST …/audio`;
+  lentidão → `TTS tentativa N/3 estourou` no log e o botão girando ~2 min.
+- 🚨 O teste `test_lista_tem_exatamente_as_tres_pt_br` **falha dentro do
+  container de produção** — lá existe `KOKORO_URL` e a lista tem 4 vozes. Não é
+  defeito; rodar a suíte fora dele.
 
 ### Precisão da leitura — o narrador soletrava (09/2026)
 
@@ -305,8 +332,11 @@ Quatro causas independentes do mesmo sintoma ("saí da tela e parou de falar"):
 - **Volume:** Docker named volume `iws04g0kow8w44o40ocsw4s0_echo-data` → `/app/data`
 - **Rede:** `coolify` (Traefik roteia via labels no docker-compose.yml)
 - **Env vars:** nenhuma obrigatória (Edge TTS é grátis)
-- **Deploy:** Push to main → GitHub App webhook → Coolify auto-build
-- 🚨 **O webhook nem sempre dispara** (conferido em 22/09/2026: push entrou, `docker logs coolify` não registrou `ApplicationDeploymentJob`). Depois de dar push, confirmar que o container foi recriado; se não, chamar o deploy na mão.
+- **Deploy:** 🚨 **push NÃO publica.** A aplicação no Coolify é de repositório
+  público (`source_id = 0`), sem webhook — medido em 22/10/2026: o último deploy
+  era de **23/09** e 9 commits do mobile nunca tinham subido. Publicar = push +
+  o deploy manual abaixo, e conferir que a imagem do container tem o commit
+  (`docker ps --filter name=iws04g0 --format "{{.Image}}"`).
 - **Deploy manual:** `curl -X POST -s "https://coolify.tier.finance/api/v1/deploy?uuid=iws04g0kow8w44o40ocsw4s0&force=true" -H "Authorization: Bearer 5|claude-deploy-token-2026"`
   (a URL antiga `apps.cloudesneper.com.br` **não resolve mais** — o `APP_URL` do Coolify é `https://coolify.tier.finance`. Acompanhar com `GET /api/v1/deployments/{deployment_uuid}`.)
 
