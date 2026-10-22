@@ -6,6 +6,7 @@ import logging
 import os
 import json
 import hashlib
+import re
 
 logger = logging.getLogger("echo.tts")
 
@@ -17,8 +18,20 @@ AUDIO_DIR = os.environ.get("AUDIO_DIR", "/app/data/audio")
 # requisição do trecho ficava aberta para sempre, o front esperava o JSON que
 # nunca vinha, e o player simplesmente parava no fim do trecho anterior — sem
 # mensagem, sem nova tentativa. Da cadeira do leitor, é "ele parou de falar".
-TTS_TIMEOUT_S = int(os.environ.get("TTS_TIMEOUT_S", "45"))
+TTS_TIMEOUT_S = int(os.environ.get("TTS_TIMEOUT_S", "90"))
 TTS_TENTATIVAS = int(os.environ.get("TTS_TENTATIVAS", "3"))
+
+# 🚨 22/10/2026 — a Microsoft passou a servir cada conexão quase em TEMPO REAL.
+# Medido no mesmo trecho de 1.989 caracteres (~2 min de fala): Thalita 86 s,
+# Antônio 17 s, Francisca 8 s. Com a Thalita todo trecho estourava os 45 s e o
+# botão de play ficava girando até dar erro. O limite é POR CONEXÃO, então o
+# trecho é falado em pedaços de frase em paralelo e emendado: o MP3 do Edge é
+# CBR de 48 kbps, e a duração de cada pedaço sai exata do tamanho em bytes —
+# é ela que desloca as marcações de palavra dos pedaços seguintes.
+TTS_PEDACO_CHARS = int(os.environ.get("TTS_PEDACO_CHARS", "500"))
+TTS_PEDACOS_SIMULTANEOS = int(os.environ.get("TTS_PEDACOS_SIMULTANEOS", "4"))
+_BYTES_POR_SEGUNDO_EDGE = 6000  # audio-24khz-48kbitrate-mono-mp3
+_FIM_DE_FRASE = re.compile(r"(?<=[.!?…;])\s+")
 
 # Dois livros grandes subindo ao mesmo tempo abririam dezenas de conexões
 # simultâneas com a Microsoft. Três por vez já satura a banda útil.
@@ -27,7 +40,9 @@ _vagas = asyncio.Semaphore(int(os.environ.get("TTS_SIMULTANEOS", "3")))
 # =========================================================================
 # DOIS MOTORES DE VOZ
 #
-# edge-tts (Microsoft, nuvem)  — rápido: ~4 s num trecho de 1.000 caracteres.
+# edge-tts (Microsoft, nuvem)  — era ~4 s num trecho de 1.000 caracteres; desde
+#                                22/10/2026 cada conexão sai quase em tempo
+#                                real, e o trecho vai em pedaços paralelos.
 # Kokoro (nosso, self-hosted)  — 12 a 20 s no mesmo trecho, MAS devolve uma
 #                                marcação POR PALAVRA, na grafia exata do
 #                                texto (medido: 154 para 154 palavras).
@@ -261,7 +276,55 @@ def _marcas_para_boundaries(marcas: list) -> list[dict]:
     return saida
 
 
+def _pedacos(texto: str, tam: int = TTS_PEDACO_CHARS) -> list[str]:
+    """Junta frases inteiras até `tam` caracteres. Corta só em fim de frase —
+    cortar no meio mudaria a entonação na emenda. Frase maior que `tam` vai
+    sozinha (fica só mais lenta)."""
+    if len(texto) <= tam:
+        return [texto]
+    saida: list[str] = []
+    atual = ""
+    for frase in _FIM_DE_FRASE.split(texto):
+        frase = frase.strip()
+        if not frase:
+            continue
+        if atual and len(atual) + 1 + len(frase) > tam:
+            saida.append(atual)
+            atual = frase
+        else:
+            atual = f"{atual} {frase}" if atual else frase
+    if atual:
+        saida.append(atual)
+    return saida or [texto]
+
+
 async def _falar(text: str, voice: str, rate: str, pitch: str) -> tuple[bytes, list]:
+    """Fala o trecho em pedaços paralelos e emenda áudio e marcações."""
+    pedacos = _pedacos(text)
+    if len(pedacos) == 1:
+        return await _falar_um(text, voice, rate, pitch)
+
+    vagas = asyncio.Semaphore(TTS_PEDACOS_SIMULTANEOS)
+
+    async def um(pedaco: str) -> tuple[bytes, list]:
+        async with vagas:
+            return await _falar_um(pedaco, voice, rate, pitch)
+
+    partes = await asyncio.gather(*(um(p) for p in pedacos))
+
+    audio = b""
+    boundaries: list[dict] = []
+    for dados, marcas in partes:
+        # 100 ns desde o início do trecho inteiro = bytes já emendados ÷ 6000/s
+        base = len(audio) * 10_000_000 // _BYTES_POR_SEGUNDO_EDGE
+        for m in marcas:
+            offset = m["offset"] + base
+            boundaries.append({**m, "offset": offset, "offset_ms": offset / 10000})
+        audio += dados
+    return audio, boundaries
+
+
+async def _falar_um(text: str, voice: str, rate: str, pitch: str) -> tuple[bytes, list]:
     communicate = edge_tts.Communicate(
         text=text,
         voice=voice,
